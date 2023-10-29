@@ -213,9 +213,9 @@ public class GridBot : BackgroundService
                 Interlocked.Exchange(ref _lastBuyOrderFilled, orderUpdate);
                 break;
             case OKXOrderSide.Sell:
-                Interlocked.Exchange(ref _lastSellOrderFilled, orderUpdate);
                 if (orderUpdate.OrderState == OKXOrderState.Filled)
                 {
+                    Interlocked.Exchange(ref _lastSellOrderFilled, orderUpdate);
                     UpdateActivePositionQuantity(orderUpdate);
                     await CalculateAndDisplayProfit(orderUpdate);
                 }
