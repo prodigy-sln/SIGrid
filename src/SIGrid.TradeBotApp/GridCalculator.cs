@@ -33,9 +33,9 @@ public static class GridCalculator
 
     public static IEnumerable<(int Index, decimal Price)> GetGridBuyLinesAndPrices(decimal currentPrice, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
     {
-        var lastLine = GetNextGridLineIndex(currentPrice, profitPerGrid, basePrice) - 1;
+        var previousGridLine = GetPreviousGridLineIndex(currentPrice, profitPerGrid, basePrice) - 1;
         var linesGenerated = 0;
-        for(var line = lastLine;linesGenerated < numLines;--line)
+        for(var line = previousGridLine; linesGenerated < numLines; --line)
         {
             var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
 
