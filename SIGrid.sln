@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIGrid.BlazorWeb", "src\SIGrid.BlazorWeb\SIGrid.BlazorWeb.csproj", "{38817B72-DB91-46DA-8632-DB2B0764B831}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIGrid.TradeBot", "src\SIGrid.TradeBot\SIGrid.TradeBot.csproj", "{2570C4A9-F976-4496-8C0A-DEAFE60957D3}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIGrid.TradeBotApp", "src\SIGrid.TradeBotApp\SIGrid.TradeBotApp.csproj", "{730B03EC-31F0-40AB-B031-B6ACD5D25518}"
@@ -19,10 +17,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{38817B72-DB91-46DA-8632-DB2B0764B831}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{38817B72-DB91-46DA-8632-DB2B0764B831}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{38817B72-DB91-46DA-8632-DB2B0764B831}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{38817B72-DB91-46DA-8632-DB2B0764B831}.Release|Any CPU.Build.0 = Release|Any CPU
 		{2570C4A9-F976-4496-8C0A-DEAFE60957D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2570C4A9-F976-4496-8C0A-DEAFE60957D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2570C4A9-F976-4496-8C0A-DEAFE60957D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
