@@ -45,4 +45,11 @@ public static class GridCalculator
             ++linesGenerated;
         }
     }
+
+    public static int GetSellGridLineFromBuyPrice(decimal buyPrice, decimal profitPerGrid, decimal basePrice = BasePrice)
+    {
+        var buyLine = GetGridBuyLinesAndPrices(buyPrice, profitPerGrid, 1, basePrice).FirstOrDefault();
+        var buyLineIdx = buyLine.Index + 2;
+        return buyLineIdx;
+    }
 }

@@ -492,7 +492,7 @@ public class GridBot : BackgroundService
         if (sellGridLinePrice < _currentPrice || sellGridLinePrice < _position.AveragePrice)
         {
             var previousGrid = sellGridLine;
-            sellGridLine = GridCalculator.GetPreviousGridLineIndex(Math.Max(_currentPrice, _position.AveragePrice.GetValueOrDefault()), _tradedSymbol.TakeProfitPercent);
+            sellGridLine = GridCalculator.GetSellGridLineFromBuyPrice(Math.Max(_currentPrice, _position.AveragePrice.GetValueOrDefault()), _tradedSymbol.TakeProfitPercent);
             _log.LogInformation("{Symbol} - SELL grid line adjusted to {OrderId} from {OldOrderId}. PRICE: {CurrentPrice:0.####} - AVG ENTRY: {AverageEntryPrice:0.####}", _tradedSymbol.Symbol, sellGridLine, previousGrid, _currentPrice.Value, _position.AveragePrice);
         }
 
