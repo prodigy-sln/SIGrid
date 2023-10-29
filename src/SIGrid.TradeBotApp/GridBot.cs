@@ -366,7 +366,7 @@ public class GridBot : BackgroundService
 
     private async Task<IEnumerable<OKXOrderPlaceRequest>> GetGridBuyOrdersAsync()
     {
-        var gridLinesBuy = GridCalculator.GetGridLinePrices(_currentPrice, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveBuyOrders).ToArray();
+        var gridLinesBuy = GridCalculator.GetGridBuyLinesAndPrices(_currentPrice, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveBuyOrders).ToArray();
         await CancelOutdatedBuyOrdersAsync(gridLinesBuy.Min(e => e.Index));
         var buyOrders = GetBuyOrderPlaceRequests(gridLinesBuy);
         return buyOrders;

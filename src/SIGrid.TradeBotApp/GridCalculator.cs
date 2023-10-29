@@ -31,12 +31,18 @@ public static class GridCalculator
         return (int)Math.Round(GetGridLineIndex(currentPrice, profitPerGrid, basePrice), MidpointRounding.ToZero);
     }
 
-    public static IEnumerable<(int Index, decimal Price)> GetGridLinePrices(decimal currentPrice, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
+    public static IEnumerable<(int Index, decimal Price)> GetGridBuyLinesAndPrices(decimal currentPrice, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
     {
-        int lastLine = GetPreviousGridLineIndex(currentPrice, profitPerGrid, basePrice) - 1;
-        foreach (int line in Enumerable.Range(lastLine - numLines + 1, numLines))
+        var lastLine = GetNextGridLineIndex(currentPrice, profitPerGrid, basePrice) - 1;
+        var linesGenerated = 0;
+        for(var line = lastLine;linesGenerated < numLines;--line)
         {
-            yield return (line, GetGridPrice(profitPerGrid, line, basePrice));
+            var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
+
+            if (linePrice >= currentPrice) continue;
+
+            yield return (line, linePrice);
+            ++linesGenerated;
         }
     }
 }
