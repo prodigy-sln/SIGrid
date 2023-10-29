@@ -1,4 +1,5 @@
-﻿using System.Reactive.Linq;
+﻿using System.Diagnostics;
+using System.Reactive.Linq;
 using OKX.Net.Enums;
 using OKX.Net.Objects.Account;
 using OKX.Net.Objects.Market;
@@ -82,7 +83,7 @@ public class GridBot : BackgroundService
 
     private async void FixOrdersAsync(object? _)
     {
-        var activeOrders = (await _okx.GetActiveOrdersAsync(_tradedSymbol.SymbolType, _tradedSymbol.Symbol))
+        var activeOrders = _okx.GetActiveOrders(_tradedSymbol.SymbolType, _tradedSymbol.Symbol)
             .Where(o => o.OrderState is OKXOrderState.Live or OKXOrderState.PartiallyFilled)
             .ToArray();
 
@@ -116,7 +117,7 @@ public class GridBot : BackgroundService
         _log.LogWarning("{Symbol} - No active orders found!", _tradedSymbol.Symbol);
         ++_timesNoActiveOrders;
 
-        if (_timesNoActiveOrders >= MaxTimesNoActiveOrders)
+        if (_timesNoActiveOrders >= MaxTimesNoActiveOrders && !Debugger.IsAttached)
         {
             _log.LogCritical("{Symbol} - No active orders {TimesNoActiveOrders} times. Stopping program.",
                 _tradedSymbol.Symbol, _timesNoActiveOrders);
@@ -247,6 +248,12 @@ public class GridBot : BackgroundService
 
     private async Task CalculateAndDisplayProfit(OKXOrderUpdate triggeringOrder)
     {
+        if (_instrument == null)
+        {
+            _log.LogWarning("{Symbol} - Received order update without loaded instrument info. Discarding.", _tradedSymbol.Symbol);
+            return;
+        }
+
         if (!GridLineOrderId.TryParse(triggeringOrder.ClientOrderId, out var gridOrderId))
         {
             _log.LogWarning("{Symbol} - Got an order without grid order id. Manually placed? OrderId: {OrderId}", _tradedSymbol.Symbol, triggeringOrder.OrderId);
@@ -263,24 +270,43 @@ public class GridBot : BackgroundService
             if (buyOrder is OKXOrderUpdate orderUpdate)
             {
                 buyVolume = orderUpdate.FillNotionalUsd;
-                buyFee = orderUpdate.FillFee;
+                buyFee = orderUpdate.GetFillFeeNotionalUsd(_instrument);
             }
             else
             {
-                buyVolume = buyOrder.Quantity * buyOrder.FillPrice;
-                buyFee = GetFeeForVolume(buyVolume, false);
+                (buyVolume, buyFee) = CalculateVolumeAndFee(buyOrder.Quantity.GetValueOrDefault(), buyOrder.FillPrice.GetValueOrDefault(), false);
             }
         }
         else
         {
             var buyPrice = _position?.AveragePrice ?? GridCalculator.GetGridPrice(_tradedSymbol.TakeProfitPercent, buyGridLine);
-            buyVolume = triggeringOrder.Quantity * buyPrice;
-            buyFee = GetFeeForVolume(buyVolume, false);
+            (buyVolume, buyFee) = CalculateVolumeAndFee(triggeringOrder.Quantity.GetValueOrDefault(), buyPrice, false);
         }
 
-        var profit = triggeringOrder.FillNotionalUsd - buyVolume - Math.Abs(buyFee ?? 0) - Math.Abs(triggeringOrder.FillFee);
+        var profit = triggeringOrder.FillNotionalUsd - buyVolume - Math.Abs(buyFee ?? 0) - Math.Abs(triggeringOrder.GetFillFeeNotionalUsd(_instrument));
+        var profitBase = profit / _currentPrice;
 
-        _log.LogInformation("{Symbol} - Grid Line Profit: {Profit:0.####} - Grid Line: {GridLine} - Exchange PnL {ExchangePnL:0.####}", _tradedSymbol.Symbol, profit, gridOrderId.LineIndex, triggeringOrder.FillPnl);
+        string baseAsset = string.IsNullOrWhiteSpace(_instrument.BaseAsset) 
+            ? (_instrument?.Underlying ?? _instrument?.Symbol ?? "UNKNOWN-").Split("-").FirstOrDefault() ?? "UNKNOWN"
+            : _instrument.BaseAsset;
+
+        _log.LogInformation("{Symbol} - Grid Line Profit: {Profit:0.####} ({BaseAsset}: {ProfitBase:0.########}) - Grid Line: {GridLine} - Exchange PnL {ExchangePnL:0.####}", _tradedSymbol.Symbol, profit, baseAsset, profitBase, gridOrderId.LineIndex, triggeringOrder.FillPnl);
+
+        (decimal Volume, decimal Fee) CalculateVolumeAndFee(decimal quantity, decimal price, bool isTaker)
+        {
+            decimal volume;
+            switch (_instrument.ContractType)
+            {
+                case OKXContractType.Linear:
+                    volume = quantity * price;
+                    return (volume, GetFeeForVolume(volume, isTaker));
+                case OKXContractType.Inverse:
+                    volume = _instrument.ContractValue * quantity ?? 0;
+                    return (volume, GetFeeForVolume(volume, isTaker));
+                default:
+                    return (0, 0);
+            }
+        }
     }
 
     private decimal GetFeeForVolume(decimal? volume, bool isTaker)
@@ -295,7 +321,9 @@ public class GridBot : BackgroundService
             return 0;
         }
 
-        var rate = isTaker ? _feeRate.TakerUsdtMarginContracts : _feeRate.MakerUsdtMarginContracts;
+        var rate = isTaker
+            ? new []{_feeRate.Taker, _feeRate.TakerFeeUsdc, _feeRate.TakerUsdtMarginContracts}.Max() 
+            : new []{_feeRate.Maker, _feeRate.MakerFeeUsdc, _feeRate.MakerUsdtMarginContracts}.Max();
         var fee = volume * rate;
         return fee ?? 0;
     }
