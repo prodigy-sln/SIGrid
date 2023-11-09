@@ -51,6 +51,7 @@ internal class Program
                     services.AddSingleton(sp => new OKXSocketClient(options =>
                     {
                         options.ApiCredentials = sp.GetRequiredService<OKXApiCredentials>();
+                        options.AutoReconnect = true;
                     }, sp.GetRequiredService<ILoggerFactory>()));
                     services.AddTransient<GridBot>();
                 })
