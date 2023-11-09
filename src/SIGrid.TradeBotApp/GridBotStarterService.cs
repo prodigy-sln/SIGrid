@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
 using SIGrid.TradeBot;
 
 namespace SIGrid.TradeBotApp;
@@ -27,6 +28,7 @@ public class GridBotStarterService : BackgroundService
                 {
                     try
                     {
+                        _log.LogInformation("{Symbol} - Starting bot with config: {BotConfiguration}", symbol.Symbol, JsonConvert.SerializeObject(symbol, Formatting.None));
                         await ActivatorUtilities.CreateInstance<GridBot>(_sp, symbol).StartAsync(stoppingToken);
                     }
                     catch (Exception ex)
