@@ -279,7 +279,7 @@ public class GridBot : BackgroundService
         }
         else
         {
-            var buyPrice = _position?.AveragePrice ?? GridCalculator.GetGridPrice(_tradedSymbol.TakeProfitPercent, buyGridLine);
+            var buyPrice = GridCalculator.GetGridPrice(_tradedSymbol.TakeProfitPercent, gridOrderId.LineIndex - 1);
             (buyVolume, buyFee) = CalculateVolumeAndFee(triggeringOrder.Quantity.GetValueOrDefault(), buyPrice, false);
         }
 
