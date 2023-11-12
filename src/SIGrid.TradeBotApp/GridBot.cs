@@ -527,10 +527,9 @@ public class GridBot : BackgroundService
         {
             var gridPrice = GetPositionPrice(GridCalculator.GetGridPrice(_tradedSymbol.TakeProfitPercent, sellGridLine));
 
-            if (_lastSellOrderFilled?.GetGridLineIndex() == sellGridLine
-                || (_lastPlaceResponses?.Any(r => r.GetGridLineIndex() == sellGridLine)).GetValueOrDefault())
+            if (_lastSellOrderFilled?.GetGridLineIndex() == sellGridLine)
             {
-                _log.LogInformation("{Symbol} - Skipping SELL order with id {SellOrderId}, either exists or recently placed at same line.", _tradedSymbol.Symbol, sellGridLine);
+                _log.LogInformation("{Symbol} - Skipping SELL order with id {SellOrderId}, recently filled at same line.", _tradedSymbol.Symbol, sellGridLine);
                 ++sellGridLine;
                 continue;
             }
