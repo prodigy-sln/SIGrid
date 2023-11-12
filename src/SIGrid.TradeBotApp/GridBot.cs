@@ -212,6 +212,7 @@ public class GridBot : BackgroundService
         {
             case OKXOrderSide.Buy:
                 Interlocked.Exchange(ref _lastBuyOrderFilled, orderUpdate);
+                Interlocked.Exchange(ref _lastSellOrderFilled, null); // Reset last filled sell order.
                 break;
             case OKXOrderSide.Sell:
                 if (orderUpdate.OrderState == OKXOrderState.Filled)
