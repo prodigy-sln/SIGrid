@@ -669,7 +669,7 @@ public class GridBot : BackgroundService
 
     private void UpdateOrderStatesFromPlaceResponses(IEnumerable<OKXOrderPlaceResponse>? responses)
     {
-        foreach (var response in responses ?? Enumerable.Empty<OKXOrderPlaceResponse>())
+        foreach (var response in (responses ?? Enumerable.Empty<OKXOrderPlaceResponse>()).Where(r => r.Code == "0"))
         {
             if (!GridLineOrderId.TryParse(response.ClientOrderId, out var gridOrderId))
             {
@@ -686,7 +686,7 @@ public class GridBot : BackgroundService
 
     private void UpdateOrderStatesFromCancelResponses(IEnumerable<OKXOrderCancelResponse>? responses)
     {
-        foreach (var response in responses ?? Enumerable.Empty<OKXOrderCancelResponse>())
+        foreach (var response in (responses ?? Enumerable.Empty<OKXOrderCancelResponse>()).Where(r => r.Code == "0"))
         {
             if (!GridLineOrderId.TryParse(response.ClientOrderId, out var gridOrderId))
             {
