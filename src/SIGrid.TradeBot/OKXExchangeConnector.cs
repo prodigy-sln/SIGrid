@@ -49,6 +49,8 @@ public class OKXExchangeConnector : IAsyncDisposable
 
     private readonly ManualResetEventSlim _loadedLock = new(false);
 
+    private long _currentGridLine;
+
     public OKXAccountBalance AccountBalance { get; private set; }
 
     public OKXExchangeConnector(OKXRestClient restClient, OKXSocketClient socketClient, ILogger<OKXExchangeConnector> log)
