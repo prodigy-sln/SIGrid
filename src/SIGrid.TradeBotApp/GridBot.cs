@@ -537,7 +537,8 @@ public class GridBot : BackgroundService
             ++sellGridLine;
         }
 
-        desiredStateOrderList = desiredStateOrderList.Take(_tradedSymbol.MaxActiveSellOrders).ToList();
+        var existingRequestLinedIndices = orderRequests.Select(o => o.GetGridLineIndex()).Distinct().ToArray();
+        desiredStateOrderList = desiredStateOrderList.Where(o => !existingRequestLinedIndices.Contains(o.GetGridLineIndex())).Take(_tradedSymbol.MaxActiveSellOrders).ToList();
         
         var activeSellOrders = GetActiveOrders(OKXOrderSide.Sell, true).ToArray();
         var cancelList = activeSellOrders
