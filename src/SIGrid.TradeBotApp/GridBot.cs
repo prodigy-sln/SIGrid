@@ -410,7 +410,7 @@ public class GridBot : BackgroundService
             if (newSellOrder != null)
             {
                 orderRequests.Add(newSellOrder);
-                _log.LogInformation("{Symbol} - Placing SELL order {SellOrderId} for filled buy order {BuyOrderId}", _tradedSymbol.Symbol, ((GridLineOrderId)newSellOrder.ClientOrderId!).LineIndex, ((GridLineOrderId)triggeringOrder.ClientOrderId!).LineIndex);
+                _log.LogDebug("{Symbol} - Placing SELL order {SellOrderId} for filled buy order {BuyOrderId}", _tradedSymbol.Symbol, ((GridLineOrderId)newSellOrder.ClientOrderId!).LineIndex, ((GridLineOrderId)triggeringOrder.ClientOrderId!).LineIndex);
             }
         }
 
@@ -507,7 +507,7 @@ public class GridBot : BackgroundService
         {
             if (_lastSellOrderFilled?.GetGridLineIndex() == sellGridLine)
             {
-                _log.LogInformation("{Symbol} - Skipping SELL order with id {SellOrderId}, recently filled at same line.", _tradedSymbol.Symbol, sellGridLine);
+                _log.LogDebug("{Symbol} - Skipping SELL order with id {SellOrderId}, recently filled at same line.", _tradedSymbol.Symbol, sellGridLine);
                 ++sellGridLine;
                 continue;
             }
@@ -575,7 +575,7 @@ public class GridBot : BackgroundService
         
         var numBuyOrders = placeRequestsArr.Count(o => o.OrderSide == OKXOrderSide.Buy);
         var numSellOrders = placeRequestsArr.Count(o => o.OrderSide == OKXOrderSide.Sell);
-        _log.LogInformation("{Symbol} - Cancelling orders: {CancelOrderCount} - Placing orders: {BuyOrderCount} BUY, {SellOrderCount} SELL", _tradedSymbol.Symbol, cancelRequestsArr.Length, numBuyOrders, numSellOrders);
+        _log.LogDebug("{Symbol} - Cancelling orders: {CancelOrderCount} - Placing orders: {BuyOrderCount} BUY, {SellOrderCount} SELL", _tradedSymbol.Symbol, cancelRequestsArr.Length, numBuyOrders, numSellOrders);
 
         await _okx.SetCrossLeverage(_tradedSymbol.Leverage, _tradedSymbol.Symbol);
 
