@@ -72,12 +72,21 @@ public class OKXExchangeConnector : IAsyncDisposable
                 await _socketClient.UnifiedApi.Trading.SubscribeToOrderUpdatesAsync(OKXInstrumentType.Any, null, null,
                     onNext, cts.Token), ct: cts.Token))
             .Where(o => !string.IsNullOrWhiteSpace(o.ClientOrderId))
-            .Do(orderUpdate => _ordersCache.AddOrUpdate(orderUpdate));
+            .Select(orderUpdate =>
+            {
+                _ordersCache.AddOrUpdate(orderUpdate);
+                return orderUpdate;
+            });
         _positionUpdateObservable = Observable.Create<OKXPosition>(o => GetSubscriptionCallbackAsObservable(o,
                 async onNext =>
                     await _socketClient.UnifiedApi.Trading.SubscribeToPositionUpdatesAsync(OKXInstrumentType.Any, null, null, true,
                         onNext, cts.Token), ct: cts.Token))
-            .Do(position => _ = position.PositionId.HasValue ? CodeHelper.WrapVoid(() => _positionCache.AddOrUpdate(position)) : CodeHelper.NoOp());
+            .Select(position =>
+            {
+                if (position.PositionId.HasValue)
+                    _positionCache.AddOrUpdate(position);
+                return position;
+            });
     }
 
     public async Task<OKXInstrument?> GetSymbolInfo(string symbolType, string symbol)
