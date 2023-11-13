@@ -268,6 +268,8 @@ public class GridBot : BackgroundService
         }
 
         await UpdateGridAsync(orderUpdate);
+
+        _log.LogInformation("{Symbol} - Order update handling finished.", _tradedSymbol.Symbol);
     }
 
     private void UpdateActivePositionQuantity(OKXOrderUpdate orderUpdate)
@@ -418,12 +420,9 @@ public class GridBot : BackgroundService
 
             var (placeOrders, cancelOrders) = GetGridBuyOrderUpdates();
             
-            if (triggeringOrder != null)
-            {
-                var (placeRequests, cancelRequests) = await GetGridSellOrdersAsync(triggeringOrder);
-                placeOrders = placeOrders.Concat(placeRequests);
-                cancelOrders = cancelOrders.Concat(cancelRequests);
-            }
+            var (placeRequests, cancelRequests) = await GetGridSellOrdersAsync(triggeringOrder);
+            placeOrders = placeOrders.Concat(placeRequests);
+            cancelOrders = cancelOrders.Concat(cancelRequests);
 
             await UpdateOrdersAndOrderStates(placeOrders, cancelOrders);
         }
