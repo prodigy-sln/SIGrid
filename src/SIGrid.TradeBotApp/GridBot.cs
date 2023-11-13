@@ -22,6 +22,7 @@ public class GridBot : BackgroundService
     private readonly TimeSpan _maxWaitTimeBetweenOrderCreations = TimeSpan.FromSeconds(0.5);
     private readonly SemaphoreSlim _orderLock = new(1, 1);
     private readonly Dictionary<int, OKXOrderState> _gridLineOrderStates = new();
+    private readonly TimeSpan _lastUpdateCheckInterval = TimeSpan.FromMinutes(30);
     
     private OKXInstrument? _instrument = null;
     private OKXFeeRate? _feeRate = null;
@@ -33,6 +34,8 @@ public class GridBot : BackgroundService
     private OKXOrderPlaceResponse[]? _lastPlaceResponses = null;
     private Timer? _orderFixTimer;
     private int _timesNoActiveOrders = 0;
+    private Ref<DateTime>? _lastUpdateDate;
+    private Timer? _checkLastUpdateTimer;
 
     private const int OrderFixTimerSeconds = 5;
     private const int MaxTimesNoActiveOrders = 30 / OrderFixTimerSeconds;
@@ -77,8 +80,22 @@ public class GridBot : BackgroundService
         );
 
         _orderFixTimer = new Timer(FixOrdersAsync, null, TimeSpan.FromSeconds(OrderFixTimerSeconds), TimeSpan.FromSeconds(OrderFixTimerSeconds));
+        _checkLastUpdateTimer = new Timer(ValidateLastUpdateDateOrShutdown, null, _lastUpdateCheckInterval, _lastUpdateCheckInterval);
 
         await Task.Delay(-1, stoppingToken);
+    }
+
+    private void ValidateLastUpdateDateOrShutdown(object? _)
+    {
+        if (_lastUpdateDate == null || _lastUpdateDate >= DateTime.UtcNow.Add(_lastUpdateCheckInterval.Multiply(-1))) return;
+
+        _log.LogError("{Symbol} - Did not receive any update within 30 minutes. Exiting", _tradedSymbol.Symbol);
+        Program.ApplicationStoppingToken.Cancel();
+    }
+
+    private void UpdateLastUpdateDate()
+    {
+        _lastUpdateDate = DateTime.UtcNow;
     }
 
     private async void FixOrdersAsync(object? _)
@@ -200,6 +217,8 @@ public class GridBot : BackgroundService
 
     private async Task HandleOrderUpdateAsync(OKXOrderUpdate orderUpdate)
     {
+        UpdateLastUpdateDate();
+
         if (!GridLineOrderId.TryParse(orderUpdate.ClientOrderId, out var gridOrderId))
         {
             return;
@@ -334,6 +353,8 @@ public class GridBot : BackgroundService
 
     private Task HandlePositionUpdateAsync(OKXPosition position)
     {
+        UpdateLastUpdateDate();
+
         if (position is { PositionSide: OKXPositionSide.Long, MarginMode: OKXMarginMode.Cross })
         {
             Interlocked.Exchange(ref _position, position);
@@ -346,6 +367,8 @@ public class GridBot : BackgroundService
 
     private async Task HandleTickAsync(OKXTicker tick)
     {
+        UpdateLastUpdateDate();
+
         if (!tick.LastPrice.HasValue)
         {
             return;
@@ -749,5 +772,6 @@ public class GridBot : BackgroundService
         }
 
         _orderFixTimer?.Dispose();
+        _checkLastUpdateTimer?.Dispose();
     }
 }
