@@ -7,6 +7,7 @@ using OKX.Net.Objects.Public;
 using OKX.Net.Objects.Trade;
 using SIGrid.Exchange.Shared;
 using SIGrid.Exchange.Shared.Extensions;
+using SIGrid.Telemetry;
 using SIGrid.TradeBot;
 using SIGrid.TradeBot.Extensions;
 
@@ -17,6 +18,7 @@ public class GridBot : BackgroundService
     private readonly SIGridOptions.TradedSymbolOptions _tradedSymbol;
     private readonly OKXExchangeConnector _okx;
     private readonly ILogger<GridBot> _log;
+    private readonly TelemetrySender _telemetrySender;
     private readonly List<IDisposable> _subscriptions = new();
     private readonly OKXInstrumentType _instrumentType;
     private readonly TimeSpan _maxWaitTimeBetweenOrderCreations = TimeSpan.FromSeconds(0.5);
@@ -40,11 +42,12 @@ public class GridBot : BackgroundService
     private const int OrderFixTimerSeconds = 5;
     private const int MaxTimesNoActiveOrders = 30 / OrderFixTimerSeconds;
 
-    public GridBot(SIGridOptions.TradedSymbolOptions tradedSymbol, OKXExchangeConnector okx, ILogger<GridBot> log)
+    public GridBot(SIGridOptions.TradedSymbolOptions tradedSymbol, OKXExchangeConnector okx, ILogger<GridBot> log, TelemetrySender telemetrySender)
     {
         _tradedSymbol = tradedSymbol;
         _okx = okx;
         _log = log;
+        _telemetrySender = telemetrySender;
         _instrumentType = tradedSymbol.SymbolType.ToOKXInstrumentTypeOrException();
     }
 
@@ -225,7 +228,19 @@ public class GridBot : BackgroundService
         }
 
         _gridLineOrderStates[gridOrderId.LineIndex] = orderUpdate.OrderState;
-        _log.LogInformation("{Symbol} - ORDER: {OrderId} - SIDE: {OrderSide} - STATE: {OrderState} - FILLED: {OrderQuantityFilled}/{OrderQuantity}", orderUpdate.Symbol, gridOrderId.LineIndex, orderUpdate.OrderSide, orderUpdate.OrderState, orderUpdate.QuantityFilled, orderUpdate.Quantity);
+
+        _telemetrySender.WriteOrderUpdateAsync(orderUpdate.ToTelemetryOrderUpdate(_tradedSymbol));
+
+        var action = orderUpdate.OrderState == OKXOrderState.Filled
+            ? orderUpdate.OrderSide == OKXOrderSide.Buy ? "PLACE_SELL" : "CALCULATE_PROFIT"
+            : orderUpdate.OrderState == OKXOrderState.Canceled
+                ? "UPDATE_ORDERS (Cancelled)"
+                : orderUpdate.OrderState == OKXOrderState.Live
+                    ? "UPDATE_ORDERS (Live)"
+                    : orderUpdate.OrderState == OKXOrderState.PartiallyFilled
+                        ? "UPDATE_ORDERS (PartiallyFilled)"
+                        : "UNKNOWN";
+        _log.LogInformation("{Symbol} - ORDER: {OrderId} - SIDE: {OrderSide} - STATE: {OrderState} - FILLED: {OrderQuantityFilled}/{OrderQuantity} - ACTION: {OrderAction}", orderUpdate.Symbol, gridOrderId.LineIndex, orderUpdate.OrderSide, orderUpdate.OrderState, orderUpdate.QuantityFilled, orderUpdate.Quantity, action);
 
         switch (orderUpdate.OrderSide)
         {
@@ -373,6 +388,8 @@ public class GridBot : BackgroundService
         {
             return;
         }
+
+        _telemetrySender.WritePriceUpdateAsync(new TelemetrySymbolPriceUpdate(_tradedSymbol, _currentPrice));
 
         Interlocked.Exchange(ref _currentPrice, tick.LastPrice.Value);
         await UpdateGridAsync();

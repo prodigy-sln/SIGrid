@@ -16,6 +16,7 @@
     <ItemGroup>
       <ProjectReference Include="..\..\libs\OKX.Net\OKX.Net\OKX.Net.csproj" />
       <ProjectReference Include="..\SIGrid.Exchange.Shared\SIGrid.Exchange.Shared.csproj" />
+      <ProjectReference Include="..\SIGrid.Telemetry\SIGrid.Telemetry.csproj" />
     </ItemGroup>
 
 </Project>

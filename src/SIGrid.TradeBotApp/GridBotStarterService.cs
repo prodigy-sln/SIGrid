@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
+using SIGrid.Exchange.Shared;
 using SIGrid.TradeBot;
 
 namespace SIGrid.TradeBotApp;

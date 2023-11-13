@@ -1,4 +1,4 @@
-﻿namespace SIGrid.TradeBotApp;
+﻿namespace SIGrid.Exchange.Shared;
 
 public class SIGridOptions
 {

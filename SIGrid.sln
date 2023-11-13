@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIGrid.Exchange.Shared", "s
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OKX.Net", "libs\OKX.Net\OKX.Net\OKX.Net.csproj", "{FB63F66C-8C76-4BC7-95AC-706FF50599DC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SIGrid.Telemetry", "src\SIGrid.Telemetry\SIGrid.Telemetry.csproj", "{95B71A95-098F-411F-A896-75B2F8FFBF99}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{FB63F66C-8C76-4BC7-95AC-706FF50599DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FB63F66C-8C76-4BC7-95AC-706FF50599DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FB63F66C-8C76-4BC7-95AC-706FF50599DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95B71A95-098F-411F-A896-75B2F8FFBF99}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95B71A95-098F-411F-A896-75B2F8FFBF99}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95B71A95-098F-411F-A896-75B2F8FFBF99}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95B71A95-098F-411F-A896-75B2F8FFBF99}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

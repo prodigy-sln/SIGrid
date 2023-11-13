@@ -18,10 +18,12 @@
     <PackageReference Include="Serilog.Settings.Configuration" Version="7.0.1" />
     <PackageReference Include="Serilog.Sinks.Console" Version="4.1.0" />
     <PackageReference Include="Serilog.Sinks.Debug" Version="2.0.0" />
+    <PackageReference Include="Serilog.Sinks.InfluxDB.Syslog" Version="2.3.5" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SIGrid.Exchange.Shared\SIGrid.Exchange.Shared.csproj" />
+    <ProjectReference Include="..\SIGrid.Telemetry\SIGrid.Telemetry.csproj" />
     <ProjectReference Include="..\SIGrid.TradeBot\SIGrid.TradeBot.csproj" />
   </ItemGroup>
 </Project>

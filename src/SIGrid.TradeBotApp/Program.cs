@@ -8,6 +8,8 @@ using OKX.Net.Clients;
 using OKX.Net.Objects;
 using Serilog;
 using Serilog.Events;
+using SIGrid.Exchange.Shared;
+using SIGrid.Telemetry;
 using SIGrid.TradeBot;
 using SIGrid.TradeBotApp;
 
@@ -28,6 +30,8 @@ internal class Program
                 .UseLamar()
                 .ConfigureServices((host, services) =>
                 {
+                    services.AddTelemetry(host.Configuration.GetSection("Telemetry"));
+
                     services.AddHostedService<GridBotStarterService>();
                     services.Configure<SIGridOptions>(options =>
                     {
