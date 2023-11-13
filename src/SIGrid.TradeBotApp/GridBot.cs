@@ -426,8 +426,6 @@ public class GridBot : BackgroundService
             }
 
             await UpdateOrdersAndOrderStates(placeOrders, cancelOrders);
-
-            _log.LogInformation("{Symbol} - Update Grid Finished. Next update earliest: {PossibleNextTickTime:s}", _tradedSymbol.Symbol, DateTime.UtcNow.AddTicks(_ticksUpdateGridDelay));
         }
         finally
         {
