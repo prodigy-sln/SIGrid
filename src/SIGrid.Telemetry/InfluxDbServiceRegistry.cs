@@ -9,6 +9,7 @@ public static class InfluxDbServiceRegistry
 {
     public static IServiceCollection AddTelemetry(this IServiceCollection services, IConfiguration config)
     {
+        services.Configure<TelemetryOptions>(config);
         services.Configure<InfluxDbOptions>(config.GetSection("Influx"));
         services.AddTransient(sp =>
         {
