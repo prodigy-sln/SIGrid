@@ -22,6 +22,7 @@ public class GridBot : BackgroundService
     private readonly List<IDisposable> _subscriptions = new();
     private readonly OKXInstrumentType _instrumentType;
     private readonly TimeSpan _maxWaitTimeBetweenOrderCreations = TimeSpan.FromSeconds(0.5);
+    private readonly long _ticksUpdateGridDelay;
     private readonly SemaphoreSlim _orderLock = new(1, 1);
     private readonly Dictionary<int, OKXOrderState> _gridLineOrderStates = new();
     private readonly TimeSpan _lastUpdateCheckInterval = TimeSpan.FromMinutes(30);
@@ -38,6 +39,7 @@ public class GridBot : BackgroundService
     private int _timesNoActiveOrders = 0;
     private Ref<DateTime>? _lastUpdateDate;
     private Timer? _checkLastUpdateTimer;
+    private long _lastGridUpdateTime = -1;
 
     private const int OrderFixTimerSeconds = 5;
     private const int MaxTimesNoActiveOrders = 30 / OrderFixTimerSeconds;
@@ -49,6 +51,8 @@ public class GridBot : BackgroundService
         _log = log;
         _telemetrySender = telemetrySender;
         _instrumentType = tradedSymbol.SymbolType.ToOKXInstrumentTypeOrException();
+
+        _ticksUpdateGridDelay = _maxWaitTimeBetweenOrderCreations.Ticks;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -398,15 +402,19 @@ public class GridBot : BackgroundService
     private async Task UpdateGridAsync(OKXOrderUpdate? triggeringOrder = null)
     {
         if (_currentPrice < 0 ) return;
+
+        if (_lastGridUpdateTime + _ticksUpdateGridDelay > DateTime.UtcNow.Ticks) return;
         
         if (!await _orderLock.WaitAsync(TimeSpan.FromMilliseconds(500)))
         {
             return;
         }
 
+        if (_lastGridUpdateTime + _ticksUpdateGridDelay > DateTime.UtcNow.Ticks) return;
+
         try
         {
-            var startTime = DateTime.Now;
+            _lastGridUpdateTime = DateTime.UtcNow.Ticks;
 
             var (placeOrders, cancelOrders) = GetGridBuyOrderUpdates();
             
@@ -419,18 +427,7 @@ public class GridBot : BackgroundService
 
             await UpdateOrdersAndOrderStates(placeOrders, cancelOrders);
 
-            var delay = DateTime.Now - startTime - _maxWaitTimeBetweenOrderCreations;
-            if (delay.TotalMilliseconds < 1)
-            {
-                delay = TimeSpan.FromMilliseconds(1);
-            }
-
-            if (delay > _maxWaitTimeBetweenOrderCreations)
-            {
-                delay = _maxWaitTimeBetweenOrderCreations;
-            }
-
-            await Task.Delay(delay);
+            _log.LogInformation("{Symbol} - Update Grid Finished. Next update earliest: {PossibleNextTickTime:s}", _tradedSymbol.Symbol, DateTime.UtcNow.AddTicks(_ticksUpdateGridDelay));
         }
         finally
         {
