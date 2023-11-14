@@ -11,6 +11,7 @@ using OKX.Net.Objects.Market;
 using OKX.Net.Objects.Public;
 using OKX.Net.Objects.Trade;
 using SIGrid.App.GridBot.Extensions;
+using SIGrid.App.GridBot.Helper;
 
 namespace SIGrid.App.GridBot.OKX;
 
@@ -26,11 +27,11 @@ public class OKXConnector
     private readonly ConcurrentDictionary<string, IObservable<OKXTicker>> _symbolTickerObservables = new();
     private readonly ConcurrentDictionary<string, decimal> _currentPrices = new();
 
-    private CancellationTokenSource _cts;
-    private IObservable<OKXPosition> _positionUpdateObservable;
-    private IObservable<OKXOrderUpdate> _orderUpdateObservable;
+    private CancellationTokenSource _cts = null!;
+    private IObservable<OKXPosition> _positionUpdateObservable = null!;
+    private IObservable<OKXOrderUpdate> _orderUpdateObservable = null!;
 
-    public OKXAccountBalance AccountBalance { get; set; }
+    public OKXAccountBalance AccountBalance { get; set; } = null!;
 
     public OKXConnector(OKXRestClient restClient, OKXSocketClient socketClient, ILogger<OKXConnector> log)
     {

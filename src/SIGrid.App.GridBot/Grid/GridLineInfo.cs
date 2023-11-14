@@ -1,6 +1,6 @@
 ﻿using OKX.Net.Objects.Trade;
 
-namespace SIGrid.App.GridBot;
+namespace SIGrid.App.GridBot.Grid;
 
 public struct GridLineInfo
 {

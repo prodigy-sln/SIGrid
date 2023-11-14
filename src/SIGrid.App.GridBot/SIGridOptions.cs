@@ -1,4 +1,6 @@
-﻿namespace SIGrid.App.GridBot;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace SIGrid.App.GridBot;
 
 public class SIGridOptions
 {
@@ -6,11 +8,14 @@ public class SIGridOptions
 
     public class TradedSymbolOptions
     {
-        public string Exchange { get; set; }
-
-        public string SymbolType { get; set; }
-
-        public string Symbol { get; set; }
+        [Required]
+        public string Exchange { get; set; } = null!;
+        
+        [Required]
+        public string SymbolType { get; set; } = null!;
+        
+        [Required]
+        public string Symbol { get; set; } = null!;
 
         public decimal InvestPerGrid { get; set; } = 10.0M;
 

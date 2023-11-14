@@ -1,6 +1,6 @@
 ﻿using OKX.Net.Enums;
 
-namespace SIGrid.App.GridBot;
+namespace SIGrid.App.GridBot.Grid;
 
 public struct GridLineOrderId : IComparable<GridLineOrderId>, IEquatable<GridLineOrderId>
 {

@@ -8,6 +8,7 @@ using OKX.Net.Objects.Market;
 using OKX.Net.Objects.Public;
 using OKX.Net.Objects.Trade;
 using SIGrid.App.GridBot.Extensions;
+using SIGrid.App.GridBot.Grid;
 using SIGrid.App.GridBot.OKX;
 
 namespace SIGrid.App.GridBot;
@@ -24,8 +25,8 @@ public class GridBot
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly TimeSpan _minDelayBetweenUpdates = TimeSpan.FromSeconds(0.5);
     private readonly List<int> _pendingOrderIds = new();
-    private OKXInstrument _symbol;
-    private OKXFeeRate _feeRate;
+    private OKXInstrument _symbol = null!; // Initialized on start.
+    private OKXFeeRate _feeRate = null!; // Initialized on start.
     private decimal _currentPrice;
     private int _currentGridLine;
     private OKXPosition? _position;
@@ -340,16 +341,6 @@ public class GridBot
 
             yield return gridLine;
         }
-    }
-
-    private decimal GetPositionPrice(decimal price)
-    {
-        if (_symbol == null)
-        {
-            throw new InvalidOperationException("Instrument not found.");
-        }
-
-        return Math.Round(price, _symbol.TickSize.Scale, MidpointRounding.ToZero);
     }
 
     private decimal GetPositionQuantity(decimal price)

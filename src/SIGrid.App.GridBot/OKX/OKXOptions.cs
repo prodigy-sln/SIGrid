@@ -1,10 +1,15 @@
-﻿namespace SIGrid.App.GridBot.OKX;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace SIGrid.App.GridBot.OKX;
 
 public class OKXOptions
 {
-    public string ApiKey { get; set; }
-
-    public string ApiSecret { get; set; }
-
-    public string ApiPassPhrase { get; set; }
+    [Required]
+    public string ApiKey { get; set; } = null!;
+    
+    [Required]
+    public string ApiSecret { get; set; } = null!;
+    
+    [Required]
+    public string ApiPassPhrase { get; set; } = null!;
 }

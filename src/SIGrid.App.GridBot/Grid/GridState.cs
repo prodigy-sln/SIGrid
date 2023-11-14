@@ -1,4 +1,4 @@
-﻿namespace SIGrid.App.GridBot;
+﻿namespace SIGrid.App.GridBot.Grid;
 
 public class GridState
 {
@@ -12,6 +12,6 @@ public class GridState
 
     public GridLineInfo[] SellOrderLines { get; init; }
 
-    public override string ToString() => 
+    public override string ToString() =>
         $"BUY: [{string.Join(", ", BuyOrderLines.Select(l => l.Line).Order())}]; SELL: [{string.Join(", ", SellOrderLines.Select(l => l.Line).Order())}]";
 }

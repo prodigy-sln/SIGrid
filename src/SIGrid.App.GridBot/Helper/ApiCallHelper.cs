@@ -1,7 +1,7 @@
 ﻿using System.Net;
 using CryptoExchange.Net.Objects;
 
-namespace SIGrid.App.GridBot;
+namespace SIGrid.App.GridBot.Helper;
 
 public static class ApiCallHelper
 {

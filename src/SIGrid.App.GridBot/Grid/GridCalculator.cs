@@ -1,6 +1,6 @@
 ﻿using McNeight;
 
-namespace SIGrid.App.GridBot;
+namespace SIGrid.App.GridBot.Grid;
 
 public static class GridCalculator
 {
@@ -24,7 +24,7 @@ public static class GridCalculator
     public static IEnumerable<GridLineInfo> GetGridBuyLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
     {
         var linesGenerated = 0;
-        for(var line = (startingLine - 1); linesGenerated < numLines; --line)
+        for (var line = startingLine - 1; linesGenerated < numLines; --line)
         {
             var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
 
@@ -36,7 +36,7 @@ public static class GridCalculator
     public static IEnumerable<GridLineInfo> GetGridSellLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
     {
         var linesGenerated = 0;
-        for(var line = (startingLine + 1); linesGenerated < numLines; ++line)
+        for (var line = startingLine + 1; linesGenerated < numLines; ++line)
         {
             var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
 

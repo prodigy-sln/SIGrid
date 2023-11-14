@@ -1,6 +1,7 @@
 ﻿using OKX.Net.Enums;
 using OKX.Net.Objects.Public;
 using OKX.Net.Objects.Trade;
+using SIGrid.App.GridBot.Grid;
 
 namespace SIGrid.App.GridBot.Extensions;
 

@@ -1,4 +1,5 @@
 ﻿using OKX.Net.Objects.Trade;
+using SIGrid.App.GridBot.Grid;
 
 namespace SIGrid.App.GridBot.Extensions;
 
