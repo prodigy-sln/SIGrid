@@ -1,4 +1,4 @@
-﻿namespace SIGrid.TradeBot;
+﻿namespace SIGrid.App.GridBot.OKX;
 
 public class OKXOptions
 {

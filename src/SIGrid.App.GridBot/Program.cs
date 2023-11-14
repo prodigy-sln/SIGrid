@@ -10,6 +10,7 @@ using OKX.Net.Clients;
 using OKX.Net.Objects;
 using Serilog;
 using Serilog.Events;
+using SIGrid.App.GridBot.OKX;
 
 namespace SIGrid.App.GridBot;
 

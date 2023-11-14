@@ -1,10 +1,11 @@
-﻿using CryptoExchange.Net.Objects;
+﻿using System.Net;
+using CryptoExchange.Net.Objects;
 
 namespace SIGrid.App.GridBot;
 
 public static class ApiCallHelper
 {
-    private const int TooManyRequestsErrorCode = 429;
+    private const int TooManyRequestsErrorCode = (int) HttpStatusCode.TooManyRequests;
 
     public static async Task<WebCallResult<T>> ExecuteWithRetry<T>(this Func<Task<WebCallResult<T>>> callTaskFunc, int maxBackOffRetries = 10, TimeSpan? backOffInterval = default, int backOffRetryNumber = 1, CancellationToken ct = default)
     {

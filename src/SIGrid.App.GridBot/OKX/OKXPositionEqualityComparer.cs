@@ -1,6 +1,6 @@
 ﻿using OKX.Net.Objects.Account;
 
-namespace SIGrid.App.GridBot;
+namespace SIGrid.App.GridBot.OKX;
 
 public class OKXPositionEqualityComparer : EqualityComparer<OKXPosition>
 {

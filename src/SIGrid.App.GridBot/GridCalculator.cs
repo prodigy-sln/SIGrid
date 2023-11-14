@@ -16,34 +16,9 @@ public static class GridCalculator
         return Math.Round(MathM.Log10(currentPrice / basePrice) / MathM.Log10(1.0M + profitPerGrid), 2);
     }
 
-    public static int GetNearestGridLineIndex(decimal currentPrice, decimal profitPerGrid, decimal basePrice = BasePrice)
-    {
-        return (int)Math.Round(GetGridLineIndex(currentPrice, profitPerGrid, basePrice), 0, MidpointRounding.ToEven);
-    }
-
-    public static int GetNextGridLineIndex(decimal currentPrice, decimal profitPerGrid, decimal basePrice = BasePrice)
-    {
-        return (int)Math.Round(GetGridLineIndex(currentPrice, profitPerGrid, basePrice), 0, MidpointRounding.ToPositiveInfinity);
-    }
-
     public static int GetPreviousGridLineIndex(decimal currentPrice, decimal profitPerGrid, decimal basePrice = BasePrice)
     {
         return (int)Math.Round(GetGridLineIndex(currentPrice, profitPerGrid, basePrice), 0, MidpointRounding.ToZero);
-    }
-
-    public static IEnumerable<GridLineInfo> GetGridBuyLinesAndPrices(decimal currentPrice, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
-    {
-        var previousGridLine = GetNextGridLineIndex(currentPrice, profitPerGrid, basePrice) - 2;
-        var linesGenerated = 0;
-        for(var line = previousGridLine; linesGenerated < numLines; --line)
-        {
-            var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
-
-            if (linePrice >= currentPrice) continue;
-
-            yield return new GridLineInfo(line, linePrice);
-            ++linesGenerated;
-        }
     }
 
     public static IEnumerable<GridLineInfo> GetGridBuyLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
@@ -68,13 +43,5 @@ public static class GridCalculator
             yield return new GridLineInfo(line, linePrice);
             ++linesGenerated;
         }
-    }
-
-    public static int GetSellGridLineFromBuyPrice(decimal buyPrice, decimal profitPerGrid, decimal basePrice = BasePrice)
-    {
-        return GetNextGridLineIndex(buyPrice, profitPerGrid, basePrice);
-        //var buyLine = GetGridBuyLinesAndPrices(buyPrice, profitPerGrid, 1, basePrice).FirstOrDefault();
-        //var buyLineIdx = buyLine.Index + 2;
-        //return buyLineIdx;
     }
 }

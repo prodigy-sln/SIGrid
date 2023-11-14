@@ -8,6 +8,7 @@ using OKX.Net.Objects.Market;
 using OKX.Net.Objects.Public;
 using OKX.Net.Objects.Trade;
 using SIGrid.App.GridBot.Extensions;
+using SIGrid.App.GridBot.OKX;
 
 namespace SIGrid.App.GridBot;
 
@@ -27,7 +28,6 @@ public class GridBot
     private OKXFeeRate _feeRate;
     private decimal _currentPrice;
     private int _currentGridLine;
-    private int _previousGridLine;
     private OKXPosition? _position;
     private DateTime _lastUpdateDate = DateTime.MinValue;
 
@@ -59,7 +59,6 @@ public class GridBot
 
     private void UpdateCurrentGridLine(int newGridLine)
     {
-        _previousGridLine = _currentGridLine;
         _currentGridLine = newGridLine;
         _log.LogDebug("{Symbol} - Current Grid Line: {OrderId}", _tradedSymbol.Symbol, newGridLine);
     }
@@ -342,9 +341,6 @@ public class GridBot
             yield return gridLine;
         }
     }
-
-    private decimal GetPositionPrice(int gridLineIndex) => 
-        GetPositionPrice(GridCalculator.GetGridPrice(_tradedSymbol.TakeProfitPercent, gridLineIndex));
 
     private decimal GetPositionPrice(decimal price)
     {

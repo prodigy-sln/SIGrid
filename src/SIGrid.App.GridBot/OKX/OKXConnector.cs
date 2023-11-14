@@ -1,18 +1,18 @@
 ﻿using System.Collections.Concurrent;
-using OKX.Net.Clients;
 using System.Reactive.Linq;
-using Microsoft.Extensions.Logging;
-using OKX.Net.Enums;
-using OKX.Net.Objects.Account;
-using OKX.Net.Objects.Public;
-using SIGrid.App.GridBot.Extensions;
+using System.Threading.Channels;
 using CryptoExchange.Net.Objects;
 using CryptoExchange.Net.Sockets;
-using System.Threading.Channels;
-using OKX.Net.Objects.Trade;
+using Microsoft.Extensions.Logging;
+using OKX.Net.Clients;
+using OKX.Net.Enums;
+using OKX.Net.Objects.Account;
 using OKX.Net.Objects.Market;
+using OKX.Net.Objects.Public;
+using OKX.Net.Objects.Trade;
+using SIGrid.App.GridBot.Extensions;
 
-namespace SIGrid.App.GridBot;
+namespace SIGrid.App.GridBot.OKX;
 
 public class OKXConnector
 {
