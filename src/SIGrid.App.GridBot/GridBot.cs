@@ -55,7 +55,7 @@ public class GridBot
     {
         _currentPrice = newPrice ?? _currentPrice;
         var gridLine = GetGridLineForPrice(_currentPrice);
-        if (gridLine > _currentGridLine)
+        if (gridLine > _currentGridLine && gridLine != 0)
         {
             UpdateCurrentGridLine(gridLine);
         }
@@ -80,8 +80,7 @@ public class GridBot
         var feeRate = await _okx.GetFeeRateAsync(_symbol);
 
         _feeRate = feeRate ?? throw new Exception($"Unable to retrieve fee rate info for '{_tradedSymbol.Symbol}'.");
-        _currentPrice = await _okx.GetCurrentPriceAsync(_symbol, ct);
-        UpdateCurrentPrice(_currentPrice);
+        UpdateCurrentPrice(await _okx.GetCurrentPriceAsync(_symbol, ct));
         UpdateCurrentGridLine(GetGridLineForPrice(_currentPrice));
     }
 
@@ -191,6 +190,8 @@ public class GridBot
     private void UpdateStateForFilledOrder(OKXOrder orderUpdate)
     {
         var orderId = orderUpdate.GetGridLineIndex();
+        if (orderId <= 0) return;
+
         UpdateCurrentGridLine(orderId);
     }
 
@@ -391,12 +392,12 @@ public class GridBot
 
         foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders))
         {
-            if (quantity == 0) break;
+            if (quantity <= 0) break;
 
             var gridLineQuantity = GetPositionQuantity(gridLine.Price);
             quantity -= gridLineQuantity;
 
-            _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine, quantity);
+            _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine.Line, quantity);
 
             yield return gridLine;
         }
