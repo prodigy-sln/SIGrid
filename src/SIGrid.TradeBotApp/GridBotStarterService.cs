@@ -24,17 +24,20 @@ public class GridBotStarterService : BackgroundService
     {
         await _okxConnector.InitializeAsync(stoppingToken);
 
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+
         var bots = _options.Value.TradedSymbols
             .Select(async symbol =>
                 {
                     try
                     {
                         _log.LogInformation("{Symbol} - Starting bot with config: {BotConfiguration}", symbol.Symbol, JsonConvert.SerializeObject(symbol, Formatting.None));
-                        await ActivatorUtilities.CreateInstance<GridBot>(_sp, symbol).StartAsync(stoppingToken);
+                        await ActivatorUtilities.CreateInstance<GridBot>(_sp, symbol).StartAsync(cts.Token);
                     }
                     catch (Exception ex)
                     {
-                        _log.LogError(ex, "Error running grid bot for '{Symbol}' on '{Exchange}'", symbol.Symbol, symbol.Exchange);
+                        _log.LogError(ex, "Error running grid bot for '{Symbol}' on '{Exchange}'. Shutting down application.", symbol.Symbol, symbol.Exchange);
+                        cts.Cancel();
                     }
                 }
             );
