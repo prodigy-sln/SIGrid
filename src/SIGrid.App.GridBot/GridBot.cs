@@ -22,6 +22,7 @@ public class GridBot
     private readonly OKXInstrumentType _symbolType;
     private readonly OKXPositionSide _positionSide = OKXPositionSide.Long;
     private readonly OKXTradeMode _tradeMode = OKXTradeMode.Cross;
+    private readonly OKXMarginMode _marginMode = OKXMarginMode.Cross;
     private readonly OKXOrderType _orderType = OKXOrderType.LimitOrder;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly TimeSpan _minDelayBetweenUpdates = TimeSpan.FromSeconds(0.5);
@@ -141,6 +142,7 @@ public class GridBot
         {
             try
             {
+                if (positionUpdate.MarginMode != _marginMode) continue;
                 await HandlePositionUpdateAsync(positionUpdate);
             }
             catch (Exception ex)
