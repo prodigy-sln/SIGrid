@@ -24,6 +24,11 @@ public static class GridLineOrderIdExtensions
 
     public static int GetGridLineIndex(this OKXOrderCancelRequest? order) => GetGridLineOrderId(order).LineIndex;
 
+    public static GridLineOrderId GetGridLineOrderId(this OKXOrderCancelResponse? placeRequest) => 
+        GetGridLineOrderId(placeRequest?.ClientOrderId);
+
+    public static int GetGridLineIndex(this OKXOrderCancelResponse? order) => GetGridLineOrderId(order).LineIndex;
+
     private static GridLineOrderId GetGridLineOrderId(string? clientOrderId) => 
         string.IsNullOrWhiteSpace(clientOrderId) ? default(GridLineOrderId) : clientOrderId;
 }

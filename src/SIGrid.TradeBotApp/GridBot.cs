@@ -21,7 +21,7 @@ public class GridBot : BackgroundService
     private readonly TelemetrySender _telemetrySender;
     private readonly List<IDisposable> _subscriptions = new();
     private readonly OKXInstrumentType _instrumentType;
-    private readonly TimeSpan _maxWaitTimeBetweenOrderCreations = TimeSpan.FromSeconds(0.5);
+    private readonly TimeSpan _minWaitTimeBetweenOrderCreations = TimeSpan.FromSeconds(0.5);
     private readonly long _ticksUpdateGridDelay;
     private readonly SemaphoreSlim _orderLock = new(1, 1);
     private readonly Dictionary<int, OKXOrderState> _gridLineOrderStates = new();
@@ -52,7 +52,7 @@ public class GridBot : BackgroundService
         _telemetrySender = telemetrySender;
         _instrumentType = tradedSymbol.SymbolType.ToOKXInstrumentTypeOrException();
 
-        _ticksUpdateGridDelay = _maxWaitTimeBetweenOrderCreations.Ticks;
+        _ticksUpdateGridDelay = _minWaitTimeBetweenOrderCreations.Ticks;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -107,27 +107,53 @@ public class GridBot : BackgroundService
 
     private async void FixOrdersAsync(object? _)
     {
-        var activeOrders = _okx.GetActiveOrders(_tradedSymbol.SymbolType, _tradedSymbol.Symbol)
+        var allOrders = (await _okx.GetActiveOrdersAsync(_tradedSymbol.SymbolType, _tradedSymbol.Symbol)).ToArray();
+
+        _gridLineOrderStates.Clear();
+        foreach (var order in allOrders)
+        {
+            _gridLineOrderStates[order.GetGridLineIndex()] = order.OrderState;
+        }
+
+        var activeOrders = allOrders
             .Where(o => o.OrderState is OKXOrderState.Live or OKXOrderState.PartiallyFilled)
             .ToArray();
 
-        await Task.WhenAll(activeOrders.GroupBy(o => o.GetGridLineIndex())
+        var cancelRequests = GetCancelRequestsForDuplicateOrders(activeOrders).ToArray();
+
+        if (cancelRequests.Length > 0)
+        {
+            _log.LogWarning("{Symbol} - Cancelling duplicate orders: {OrderIds}", _tradedSymbol.Symbol, string.Join(", ", cancelRequests.Select(r => r.GetGridLineIndex())));
+            await _okx.CancelOrdersAsync(cancelRequests);
+        }
+
+        CheckActiveOrders(activeOrders.Length);
+    }
+
+    private IEnumerable<OKXOrderCancelRequest> GetCancelRequestsForDuplicateOrders(IEnumerable<OKXOrder> ordersToCheck)
+    {
+        var cancelRequests = ordersToCheck.GroupBy(o => o.GetGridLineIndex())
             .Where(g => g.Count() > 1)
-            .Select(async g =>
+            .SelectMany(g =>
             {
-                var cancelRequests = g.OrderByDescending(o => o.OrderState)
+                var cancelRequests = g.Where(o => o.OrderState == OKXOrderState.Live)
                     .Skip(1)
-                    .Select(o => new OKXOrderCancelRequest
+                    .Select(o =>
                     {
-                        OrderId = o.OrderId.ToString()
+                        _gridLineOrderStates[o.GetGridLineIndex()] = OKXOrderState.Canceled;
+                        return new OKXOrderCancelRequest
+                        {
+                            Symbol = o.Symbol,
+                            OrderId = o.OrderId.ToString(),
+                            ClientOrderId = o.ClientOrderId
+                        };
                     })
                     .ToArray();
 
-                _log.LogWarning("{Symbol} - Cancelling duplicate orders: {OrderIds}", _tradedSymbol.Symbol, string.Join(", ", cancelRequests.Select(r => r.GetGridLineIndex())));
-                await _okx.CancelOrdersAsync(cancelRequests);
-            }));
+                return cancelRequests;
+            }).ToArray();
 
-        CheckActiveOrders(activeOrders.Length);
+        return cancelRequests;
     }
 
     private void CheckActiveOrders(int activeOrdersCount)
@@ -173,7 +199,8 @@ public class GridBot : BackgroundService
         var buyOrders = activeOrders.Where(o => o.OrderSide == OKXOrderSide.Buy).ToArray();
         var cancelRequests = buyOrders.Select(o => new OKXOrderCancelRequest
         {
-            Symbol = _tradedSymbol.Symbol,
+            Symbol = o.Symbol,
+            ClientOrderId = o.ClientOrderId,
             OrderId = o.OrderId.ToString(),
         }).ToArray();
         if (cancelRequests.Length > 0)
@@ -216,10 +243,23 @@ public class GridBot : BackgroundService
             .Select(o => new OKXOrderCancelRequest
             {
                 Symbol = o.Symbol,
+                ClientOrderId = o.ClientOrderId,
                 OrderId = o.OrderId!.Value.ToString(),
             }));
 
         await base.StopAsync(cancellationToken);
+    }
+
+    private static string GetOrderUpdateActionForLogMessage(OKXOrderUpdate orderUpdate)
+    {
+        return orderUpdate.OrderState switch
+        {
+            OKXOrderState.Filled => orderUpdate.OrderSide == OKXOrderSide.Buy ? "PLACE_SELL" : "CALCULATE_PROFIT",
+            OKXOrderState.Canceled => "UPDATE_ORDERS (Cancelled)",
+            OKXOrderState.Live => "UPDATE_ORDERS (Live)",
+            OKXOrderState.PartiallyFilled => "UPDATE_ORDERS (PartiallyFilled)",
+            _ => "UNKNOWN"
+        };
     }
 
     private async Task HandleOrderUpdateAsync(OKXOrderUpdate orderUpdate)
@@ -235,16 +275,7 @@ public class GridBot : BackgroundService
 
         _telemetrySender.WriteOrderUpdateAsync(orderUpdate.ToTelemetryOrderUpdate(_tradedSymbol));
 
-        var action = orderUpdate.OrderState == OKXOrderState.Filled
-            ? orderUpdate.OrderSide == OKXOrderSide.Buy ? "PLACE_SELL" : "CALCULATE_PROFIT"
-            : orderUpdate.OrderState == OKXOrderState.Canceled
-                ? "UPDATE_ORDERS (Cancelled)"
-                : orderUpdate.OrderState == OKXOrderState.Live
-                    ? "UPDATE_ORDERS (Live)"
-                    : orderUpdate.OrderState == OKXOrderState.PartiallyFilled
-                        ? "UPDATE_ORDERS (PartiallyFilled)"
-                        : "UNKNOWN";
-        _log.LogInformation("{Symbol} - ORDER: {OrderId} - SIDE: {OrderSide} - STATE: {OrderState} - FILLED: {OrderQuantityFilled}/{OrderQuantity} - ACTION: {OrderAction}", orderUpdate.Symbol, gridOrderId.LineIndex, orderUpdate.OrderSide, orderUpdate.OrderState, orderUpdate.QuantityFilled, orderUpdate.Quantity, action);
+        _log.LogInformation("{Symbol} - ORDER: {OrderId} - SIDE: {OrderSide} - STATE: {OrderState} - FILLED: {OrderQuantityFilled}/{OrderQuantity} - ACTION: {OrderAction}", orderUpdate.Symbol, gridOrderId.LineIndex, orderUpdate.OrderSide, orderUpdate.OrderState, orderUpdate.QuantityFilled, orderUpdate.Quantity, GetOrderUpdateActionForLogMessage(orderUpdate));
 
         switch (orderUpdate.OrderSide)
         {
@@ -521,6 +552,8 @@ public class GridBot : BackgroundService
             TradeMode = triggeringOrder.TradeMode
         };
 
+        _gridLineOrderStates[newGridOrderId.LineIndex] = OKXOrderState.Live;
+
         return orderRequest;
     }
 
@@ -538,8 +571,16 @@ public class GridBot : BackgroundService
         }
 
         var desiredStateOrderList = new List<OKXOrderPlaceRequest>();
-        
-        var sellGridLine = GetActiveOrders(OKXOrderSide.Buy, true).Select(o => o.GetGridLineIndex()).Max() + 2;
+
+        var activeOrders = GetActiveOrders(OKXOrderSide.Buy, true).Select(o => o.GetGridLineIndex()).ToArray();
+
+        if (activeOrders.Length == 0)
+        {
+            _log.LogWarning("{Symbol} - No active buy orders, cannot determine sell order start line.", _tradedSymbol.Symbol);
+            return (Enumerable.Empty<OKXOrderPlaceRequest>(), Enumerable.Empty<OKXOrderCancelRequest>());
+        }
+
+        var sellGridLine = activeOrders.Max() + 2;
 
         while (inactiveQuantity > 0)
         {
@@ -558,11 +599,12 @@ public class GridBot : BackgroundService
                 orderQuantity = inactiveQuantity;
             }
 
+            var orderId = GridLineOrderId.Create(sellGridLine, OKXOrderSide.Buy);
             desiredStateOrderList.Add(new OKXOrderPlaceRequest
             {
                 Symbol = _tradedSymbol.Symbol,
                 TradeMode = OKXTradeMode.Cross,
-                ClientOrderId = GridLineOrderId.Create(sellGridLine, OKXOrderSide.Buy),
+                ClientOrderId = orderId,
                 OrderSide = OKXOrderSide.Sell,
                 PositionSide = OKXPositionSide.Long,
                 OrderType = OKXOrderType.LimitOrder,
@@ -570,6 +612,8 @@ public class GridBot : BackgroundService
                 Quantity = orderQuantity,
                 ReduceOnly = true
             });
+
+            _gridLineOrderStates[orderId.LineIndex] = OKXOrderState.Live;
 
             inactiveQuantity -= orderQuantity;
             ++sellGridLine;
@@ -579,6 +623,7 @@ public class GridBot : BackgroundService
         desiredStateOrderList = desiredStateOrderList.Where(o => !existingRequestLinedIndices.Contains(o.GetGridLineIndex())).Take(_tradedSymbol.MaxActiveSellOrders).ToList();
         
         var activeSellOrders = GetActiveOrders(OKXOrderSide.Sell, true).ToArray();
+
         var cancelList = activeSellOrders
             .Where(activeOrder => !desiredStateOrderList.Any(ds =>
                                       ds.GetGridLineIndex() == activeOrder.GetGridLineIndex())
@@ -586,11 +631,13 @@ public class GridBot : BackgroundService
                                       .Single(o =>
                                           o.GetGridLineIndex() == activeOrder.GetGridLineIndex())
                                       .Quantity != activeOrder.Quantity)
-            .Select(order => new OKXOrderCancelRequest()
+            .Select(order => new OKXOrderCancelRequest
             {
                 Symbol = order.Symbol,
+                ClientOrderId = order.ClientOrderId,
                 OrderId = order.OrderId.ToString()
             })
+            .Concat(GetCancelRequestsForDuplicateOrders(activeSellOrders))
             .ToList();
 
         var placeRequests = desiredStateOrderList.Where(desiredOrder =>
@@ -601,6 +648,7 @@ public class GridBot : BackgroundService
         _log.LogDebug("{Symbol} - Desired State Sell Orders:", _tradedSymbol.Symbol);
         _log.LogDebug("{Symbol} - DESIRED: {DesiredOrders}", _tradedSymbol.Symbol, desiredStateOrderList.Select(o => (o.GetGridLineIndex(), o.Quantity)).OrderBy(o => o.Item1));
         _log.LogDebug("{Symbol} -  ACTIVE: {ActiveOrders}", _tradedSymbol.Symbol, activeSellOrders.Select(o => (o.GetGridLineIndex(), o.Quantity)).OrderBy(o => o.Item1));
+        _log.LogDebug("{Symbol} -   PLACE: {PlaceOrders}", _tradedSymbol.Symbol, placeRequests.Select(o => o.GetGridLineIndex()).Order());
         _log.LogDebug("{Symbol} -  CANCEL: {DesiredOrders}", _tradedSymbol.Symbol, cancelList.Select(o => o.GetGridLineIndex()).Order());
 
         return (placeRequests, cancelList);
@@ -698,8 +746,11 @@ public class GridBot : BackgroundService
                     Quantity = positionQuantity,
                 };
                 return request;
-            });
-        return orders.ToArray();
+            }).ToArray();
+
+        _log.LogDebug("{Symbol} - Buy orders to place: {OrderIds}", _tradedSymbol.Symbol, orders.Select(o => o.GetGridLineIndex()));
+
+        return orders;
     }
 
     private bool HasActiveOrderForLine(int lineIndex) =>

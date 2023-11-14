@@ -49,8 +49,6 @@ public class OKXExchangeConnector : IAsyncDisposable
 
     private readonly ManualResetEventSlim _loadedLock = new(false);
 
-    private long _currentGridLine;
-
     public OKXAccountBalance AccountBalance { get; private set; }
 
     public OKXExchangeConnector(OKXRestClient restClient, OKXSocketClient socketClient, ILogger<OKXExchangeConnector> log)
@@ -63,10 +61,12 @@ public class OKXExchangeConnector : IAsyncDisposable
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct);
+
         Observable.Timer(TimeSpan.Zero, TimeSpan.FromSeconds(15))
             .Select(_ => Observable.FromAsync(UpdateBalancesAsync)).Concat().Subscribe(cts.Token);
         Observable.Timer(TimeSpan.Zero, TimeSpan.FromSeconds(60))
             .Select(_ => Observable.FromAsync(UpdateSymbolsAsync)).Concat().Subscribe(cts.Token);
+
         _orderUpdateObservable = Observable.Create<OKXOrderUpdate>(o => GetSubscriptionCallbackAsObservable(o,
             async onNext =>
                 await _socketClient.UnifiedApi.Trading.SubscribeToOrderUpdatesAsync(OKXInstrumentType.Any, null, null,
@@ -77,6 +77,7 @@ public class OKXExchangeConnector : IAsyncDisposable
                 _ordersCache.AddOrUpdate(orderUpdate);
                 return orderUpdate;
             });
+
         _positionUpdateObservable = Observable.Create<OKXPosition>(o => GetSubscriptionCallbackAsObservable(o,
                 async onNext =>
                     await _socketClient.UnifiedApi.Trading.SubscribeToPositionUpdatesAsync(OKXInstrumentType.Any, null, null, true,
@@ -155,13 +156,10 @@ public class OKXExchangeConnector : IAsyncDisposable
     public async Task<IEnumerable<OKXOrderPlaceResponse>?> PlaceOrdersAsync(IEnumerable<OKXOrderPlaceRequest> orders)
     {
         var result = await _socketClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(orders);
-        if (!result.GetResultOrError(out var data, out var error))
-        {
-            _log.LogError("Error placing orders: {message}", error.Message);
-            return null;
-        }
+        if (result.GetResultOrError(out var data, out var error)) return data;
 
-        return data;
+        _log.LogError("Error placing orders: {message}", error.Message);
+        return null;
     }
 
     public async Task<IEnumerable<OKXOrderCancelResponse>?> CancelOrdersAsync(IEnumerable<OKXOrderCancelRequest> cancelRequests)
@@ -175,7 +173,12 @@ public class OKXExchangeConnector : IAsyncDisposable
 
         var dataArr = data.ToArray();
 
-        _ordersCache.RemoveKeys(dataArr.Where(o => !string.IsNullOrWhiteSpace(o.ClientOrderId)).Select(o => o.ClientOrderId!));
+        foreach (var response in dataArr.Where(r => r.Code != "0"))
+        {
+            _log.LogWarning("{Symbol} - Error cancelling order: {Message}", response.Message);
+        }
+
+        _ordersCache.RemoveKeys(dataArr.Where(r => r.Code == "0").Where(o => !string.IsNullOrWhiteSpace(o.ClientOrderId)).Select(o => o.ClientOrderId!));
 
         return dataArr;
     }
@@ -228,7 +231,12 @@ public class OKXExchangeConnector : IAsyncDisposable
         }
 
         var orders = data.ToArray();
-        _ordersCache.AddOrUpdate(orders);
+        _ordersCache.Edit(edit =>
+        {
+            edit.Clear();
+            edit.AddOrUpdate(orders);
+        });
+
         return orders;
     }
 
