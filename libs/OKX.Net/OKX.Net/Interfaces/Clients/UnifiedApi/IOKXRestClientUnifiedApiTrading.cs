@@ -200,13 +200,13 @@ public interface IOKXRestClientUnifiedApiTrading
     /// <param name="underlying">Underlying</param>
     /// <param name="orderType">Order Type</param>
     /// <param name="state">State</param>
-    /// <param name="startTime">Pagination of data to return records earlier than the requested ts</param>
-    /// <param name="endTime">Pagination of data to return records newer than the requested ts</param>
+    /// <param name="before">Pagination of data to return records before the given order id.</param>
+    /// <param name="after">Pagination of data to return records after the given order id.</param>
     /// <param name="limit">Number of results per request. The maximum is 100; the default is 100.</param>
     /// <param name="instrumentFamily">Instrument family</param>
     /// <param name="ct">Cancellation Token</param>
     /// <returns></returns>
-    Task<WebCallResult<IEnumerable<OKXOrder>>> GetOrdersAsync(OKXInstrumentType? instrumentType = null, string? symbol = null, string? underlying = null, OKXOrderType? orderType = null, OKXOrderState? state = null, DateTime? startTime = null, DateTime? endTime = null, int limit = 100, string? instrumentFamily = null, CancellationToken ct = default);
+    Task<WebCallResult<IEnumerable<OKXOrder>>> GetOrdersAsync(OKXInstrumentType? instrumentType = null, string? symbol = null, string? underlying = null, OKXOrderType? orderType = null, OKXOrderState? state = null, long? before = null, long? after = null, int limit = 100, string? instrumentFamily = null, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieve recently-filled transaction details in the last 3 months.
