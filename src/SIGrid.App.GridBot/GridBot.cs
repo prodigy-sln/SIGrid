@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Reactive.Linq;
 using CryptoExchange.Net.CommonObjects;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -24,7 +25,9 @@ public class GridBot
     private readonly OKXOrderType _orderType = OKXOrderType.LimitOrder;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly TimeSpan _minDelayBetweenUpdates = TimeSpan.FromSeconds(0.5);
-    private readonly List<int> _pendingOrderIds = new();
+    private readonly ConcurrentDictionary<int, byte> _pendingOrderIds = new();
+    private readonly TimeSpan _pendingOrderTimeout = TimeSpan.FromSeconds(5);
+    private readonly ConcurrentDictionary<int, CancellationTokenSource> _pendingOrderRemovalTaskTokens = new();
     private OKXInstrument _symbol = null!; // Initialized on start.
     private OKXFeeRate _feeRate = null!; // Initialized on start.
     private decimal _currentPrice;
@@ -84,14 +87,21 @@ public class GridBot
 
     private async Task SubscribeToExchangeUpdates(CancellationToken ct)
     {
-        var symbolTicker = _okx.GetSymbolTickerSubscription(_symbol, ct).ToAsyncEnumerable();
-        var orderUpdates = _okx.GetOrderUpdateSubscription(_symbol).ToAsyncEnumerable();
-        var positionUpdates = _okx.GetPositionUpdateSubscription(_symbol).ToAsyncEnumerable();
+        var symbolTicker = _okx.GetSymbolTickerSubscription(_symbol, ct)
+            .Sample(_minDelayBetweenUpdates)
+            .ToAsyncEnumerable();
+
+        var positionUpdates = _okx.GetPositionUpdateSubscription(_symbol)
+            .Sample(_minDelayBetweenUpdates)
+            .ToAsyncEnumerable();
+
+        var orderUpdates = _okx.GetOrderUpdateSubscription(_symbol)
+            .ToAsyncEnumerable();
 
         await Task.WhenAll(
-            HandleSymbolTickerUpdatesAsync(symbolTicker), 
-            HandleOrderUpdatesAsync(orderUpdates),
-            HandlePositionUpdatesAsync(positionUpdates)
+            HandleSymbolTickerUpdatesAsync(symbolTicker),
+            HandlePositionUpdatesAsync(positionUpdates),
+            HandleOrderUpdatesAsync(orderUpdates)
         );
     }
 
@@ -172,7 +182,10 @@ public class GridBot
 
     private void RemovePendingOrder(OKXOrder orderUpdate)
     {
-        _pendingOrderIds.Remove(orderUpdate.GetGridLineIndex());
+        var line = orderUpdate.GetGridLineIndex();
+
+        _pendingOrderIds.Remove(line, out _);
+        CancelPendingOrderCleanupTask(line);
     }
 
     private void UpdateStateForFilledOrder(OKXOrder orderUpdate)
@@ -183,7 +196,7 @@ public class GridBot
 
     private async Task HandlePositionUpdateAsync(OKXPosition positionUpdate)
     {
-        _position = positionUpdate;
+        Interlocked.Exchange(ref _position, positionUpdate);
 
         await HandleUpdateEventAsync();
     }
@@ -220,18 +233,59 @@ public class GridBot
         var cancelRequests = GetCancelRequestsFromStates(desiredState, currentState)
             .ToArray();
         var placeRequests = GetOrderPlaceRequestsFromStates(desiredState, currentState)
-            .Where(r => !_pendingOrderIds.Contains(r.GetGridLineIndex()))
+            .Where(r => !_pendingOrderIds.ContainsKey(r.GetGridLineIndex()))
             .ToArray();
 
-        _log.LogDebug("DESIRED: {DesiredState}", desiredState);
-        _log.LogDebug("CURRENT: {CurrentState}", currentState);
-        _log.LogDebug(" CANCEL: {CancelOrders}", cancelRequests.Select(r => r.GetGridLineIndex()));
-        _log.LogDebug("  PLACE: {PlaceOrders}", placeRequests.Select(r => r.GetGridLineIndex()));
+        if (_log.IsEnabled(LogLevel.Debug))
+        {
+            _log.LogDebug("{Symbol} - DESIRED: {DesiredState}", _tradedSymbol.Symbol, desiredState);
+            _log.LogDebug("{Symbol} - CURRENT: {CurrentState}", _tradedSymbol.Symbol, currentState);
+            _log.LogDebug("{Symbol} -  CANCEL: {CancelOrders}", _tradedSymbol.Symbol, cancelRequests.Select(r => r.GetGridLineIndex()));
+            _log.LogDebug("{Symbol} -   PLACE: {PlaceOrders}", _tradedSymbol.Symbol, placeRequests.Select(r => r.GetGridLineIndex()));
+        }
 
-        _pendingOrderIds.AddRange(placeRequests.Select(l => l.GetGridLineIndex()));
+        SetupPendingOrders(placeRequests.Select(l => l.GetGridLineIndex()));
 
         if (cancelRequests.Length > 0) await _okx.CancelOrdersAsync(cancelRequests);
         if (placeRequests.Length > 0) await _okx.PlaceOrdersAsync(placeRequests);
+    }
+
+    private void SetupPendingOrders(IEnumerable<int> pendingLines)
+    {
+        foreach (var pendingLine in pendingLines)
+        {
+            SetupPendingOrder(pendingLine);
+        }
+    }
+
+    private void SetupPendingOrder(int pendingLine)
+    {
+        _pendingOrderIds.AddOrUpdate(pendingLine, byte.MinValue, (k, b) => b);
+        StartPendingOrderCleanupTask(pendingLine);
+    }
+
+    private void StartPendingOrderCleanupTask(int pendingLine)
+    {
+        var cts = new CancellationTokenSource();
+        _pendingOrderRemovalTaskTokens.AddOrUpdate(pendingLine, cts, (l, _) => cts);
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(_pendingOrderTimeout, cts.Token);
+            if (cts.IsCancellationRequested) return;
+
+            _log.LogWarning("{Symbol} - Did not receive a result for pending order {OrderId} within {PendingOrderTimeout}", _tradedSymbol.Symbol, pendingLine, _pendingOrderTimeout);
+
+            _pendingOrderIds.Remove(pendingLine, out _);
+        }, cts.Token);
+    }
+
+    private void CancelPendingOrderCleanupTask(int line)
+    {
+        if (_pendingOrderRemovalTaskTokens.Remove(line, out var cts))
+        {
+            cts.Cancel();
+        }
     }
 
     private IEnumerable<OKXOrderCancelRequest> GetCancelRequestsFromStates(GridState desiredState, GridState currentState)
@@ -245,14 +299,15 @@ public class GridBot
         var sellCancelLines = CreateCancelRequestsFromGridLineInfos(
             currentState.SellOrderLines.ExceptBy(desiredState.SellOrderLines.Select(l => l.Line), l => l.Line)
         );
-        var cancelDuplicateLines = CreateCancelRequestsFromGridLineInfos(
+
+        var duplicateLines = CreateCancelRequestsFromGridLineInfos(
             currentState.BuyOrderLines.Concat(currentState.SellOrderLines)
                 .GroupBy(l => l.Line)
                 .Where(g => g.Count() > 1)
                 .SelectMany(g => g.Skip(1))
         );
 
-        var cancelRequests = buyCancelLines.Concat(sellCancelLines).Concat(cancelDuplicateLines);
+        var cancelRequests = buyCancelLines.Concat(sellCancelLines).Concat(duplicateLines);
 
         return cancelRequests;
     }
@@ -332,12 +387,16 @@ public class GridBot
         var quantity = _position.PositionsQuantity.GetValueOrDefault();
         if (quantity == 0) yield break;
 
+        _log.LogTrace("{Symbol} - Building SELL desired state. Found position with quantity: {PositionQuantity}", _tradedSymbol.Symbol, quantity);
+
         foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders))
         {
-            if (quantity < 0) break;
+            if (quantity == 0) break;
 
             var gridLineQuantity = GetPositionQuantity(gridLine.Price);
             quantity -= gridLineQuantity;
+
+            _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine, quantity);
 
             yield return gridLine;
         }
