@@ -115,6 +115,7 @@ public class OKXConnector
     public async Task<IEnumerable<OKXOrderPlaceResponse>?> PlaceOrdersAsync(IEnumerable<OKXOrderPlaceRequest> placeRequests)
     {
         var result = await _socketClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(placeRequests);
+        //var result = await _restClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(placeRequests);
         if (!result.GetResultOrError(out var data, out var error))
         {
             _log.LogError("Error placing orders: {message}", error.Message);
@@ -134,6 +135,7 @@ public class OKXConnector
     public async Task<IEnumerable<OKXOrderCancelResponse>?> CancelOrdersAsync(IEnumerable<OKXOrderCancelRequest> cancelRequests)
     {
         var result = await _socketClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(cancelRequests);
+        //var result = await _restClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(cancelRequests);
         if (!result.GetResultOrError(out var data, out var error))
         {
             _log.LogError("Error cancelling orders: {message}", error.Message);
