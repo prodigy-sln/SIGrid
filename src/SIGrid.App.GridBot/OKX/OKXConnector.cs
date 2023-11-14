@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using CryptoExchange.Net.Objects;
 using CryptoExchange.Net.Sockets;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OKX.Net.Clients;
 using OKX.Net.Enums;
 using OKX.Net.Objects.Account;
@@ -17,15 +18,18 @@ namespace SIGrid.App.GridBot.OKX;
 
 public class OKXConnector
 {
+    private readonly IOptions<SIGridOptions> _gridBotOptions;
     private readonly OKXRestClient _restClient;
     private readonly OKXSocketClient _socketClient;
     private readonly ILogger<OKXConnector> _log;
     private readonly List<UpdateSubscription> _socketSubscriptions = new();
     private readonly ConcurrentDictionary<long, OKXPosition> _position = new();
-    private readonly ConcurrentDictionary<string, OKXOrder> _orders = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<long, OKXOrder>> _orders = new();
     private readonly ConcurrentDictionary<OKXInstrumentType, List<OKXInstrument>> _symbols = new();
     private readonly ConcurrentDictionary<string, IObservable<OKXTicker>> _symbolTickerObservables = new();
     private readonly ConcurrentDictionary<string, decimal> _currentPrices = new();
+
+    private readonly object _orderUpdateLock = new();
 
     private CancellationTokenSource _cts = null!;
     private IObservable<OKXPosition> _positionUpdateObservable = null!;
@@ -33,8 +37,9 @@ public class OKXConnector
 
     public OKXAccountBalance AccountBalance { get; set; } = null!;
 
-    public OKXConnector(OKXRestClient restClient, OKXSocketClient socketClient, ILogger<OKXConnector> log)
+    public OKXConnector(IOptions<SIGridOptions> gridBotOptions, OKXRestClient restClient, OKXSocketClient socketClient, ILogger<OKXConnector> log)
     {
+        _gridBotOptions = gridBotOptions;
         _restClient = restClient;
         _socketClient = socketClient;
         _log = log;
@@ -103,7 +108,7 @@ public class OKXConnector
 
     public IEnumerable<OKXOrder> GetCurrentOrders(OKXInstrument instrument)
     {
-        return _orders.Values
+        return GetActiveOrders(instrument)
             .Where(o => o.InstrumentType == instrument.InstrumentType && o.Symbol == instrument.Symbol);
     }
 
@@ -145,6 +150,12 @@ public class OKXConnector
         return dataArr;
     }
 
+    private string GetInstrumentKey(OKXInstrument instrument) => 
+        $"{instrument.InstrumentType}_{instrument.Symbol}";
+
+    private string GetInstrumentKey(OKXOrder order) =>
+        $"{order.InstrumentType}_{order.Symbol}";
+
     private void SubscribeBackgroundUpdates(CancellationToken ct)
     {
         Observable.Timer(TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15))
@@ -182,8 +193,55 @@ public class OKXConnector
             {
                 if (string.IsNullOrWhiteSpace(orderUpdate.ClientOrderId)) return;
 
-                _orders[orderUpdate.ClientOrderId] = orderUpdate;
+                if (orderUpdate.OrderState is OKXOrderState.Filled or OKXOrderState.Canceled)
+                {
+                    RemoveActiveOrder(orderUpdate);
+                }
+                else
+                {
+                    AddOrUpdateActiveOrder(orderUpdate);
+                }
             }, ct: ct));
+    }
+
+    private void AddOrUpdateActiveOrder(OKXOrder order)
+    {
+        if (order.OrderId is null or 0) return;
+
+        var activeOrders = GetActiveOrdersForKey(GetInstrumentKey(order));
+        activeOrders.AddOrUpdate(order.OrderId.Value, order, (_, _) => order);
+    }
+
+    private void AddOrUpdateActiveOrders(IEnumerable<OKXOrder> orders)
+    {
+        foreach (var orderGroup in orders.Where(o => o.OrderId > 0).GroupBy(GetInstrumentKey))
+        {
+            var activeOrders = GetActiveOrdersForKey(orderGroup.Key);
+            foreach (var order in orderGroup)
+            {
+                if (order.OrderId is null or 0) continue;
+
+                activeOrders.AddOrUpdate(order.OrderId.Value, order, (_, _) => order);
+            }
+        }
+    }
+
+    private void RemoveActiveOrder(OKXOrder order)
+    {
+        if (order.OrderId is null or 0) return;
+
+        var activeOrders = GetActiveOrdersForKey(GetInstrumentKey(order));
+        activeOrders.Remove(order.OrderId.Value, out _);
+    }
+
+    private OKXOrder[] GetActiveOrders(OKXInstrument instrument)
+    {
+        return GetActiveOrdersForKey(GetInstrumentKey(instrument)).Values.ToArray();
+    }
+
+    private ConcurrentDictionary<long, OKXOrder> GetActiveOrdersForKey(string key)
+    {
+        return _orders.TryGetValue(key, out var orders) ? orders : _orders[key] = new ConcurrentDictionary<long, OKXOrder>();
     }
 
     private IObservable<OKXTicker> GetOrCreateSymbolTickerObservable(OKXInstrument instrument, CancellationToken ct)
@@ -247,19 +305,29 @@ public class OKXConnector
 
     private async Task UpdateOrdersAsync(CancellationToken ct)
     {
-        var activeOrders =
-            await ApiCallHelper.ExecuteWithRetry(() => _restClient.UnifiedApi.Trading.GetOrdersAsync(ct: ct), ct: ct);
+        foreach (var tradedSymbol in _gridBotOptions.Value.TradedSymbols)
+        {
+            await UpdateOrdersForSymbolAsync(tradedSymbol, ct);
+        }
+    }
+
+    private async Task UpdateOrdersForSymbolAsync(SIGridOptions.TradedSymbolOptions tradedSymbol, CancellationToken ct, long? beforeOrderId = null)
+    {
+        var instrumentType = Enum.Parse<OKXInstrumentType>(tradedSymbol.SymbolType);
+        var activeOrders = await ApiCallHelper.ExecuteWithRetry(() => _restClient.UnifiedApi.Trading.GetOrdersAsync(instrumentType, symbol: tradedSymbol.Symbol, before: beforeOrderId, limit: 100, ct: ct), ct: ct);
         if (!activeOrders.GetResultOrError(out var data, out var error))
         {
-            _log.LogWarning("Error loading orders: {message}", error);
+            _log.LogWarning("{Symbol} - Error loading orders: {message}", tradedSymbol.Symbol, error);
             return;
         }
 
-        foreach (var order in data)
-        {
-            if (string.IsNullOrWhiteSpace(order.ClientOrderId)) continue;
+        var dataArr = data.ToArray();
 
-            _orders[order.ClientOrderId] = order;
+        AddOrUpdateActiveOrders(dataArr);
+
+        if (dataArr.Length == 100)
+        {
+            await UpdateOrdersForSymbolAsync(tradedSymbol, ct, dataArr.Where(o => o.OrderId.HasValue).Select(o => o.OrderId).Append(long.MaxValue).Min());
         }
     }
 
