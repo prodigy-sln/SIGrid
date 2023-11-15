@@ -16,7 +16,7 @@ using SIGrid.App.GridBot.Helper;
 
 namespace SIGrid.App.GridBot.OKX;
 
-public class OKXConnector
+public class OKXConnector : IAsyncDisposable
 {
     private readonly IOptions<SIGridOptions> _gridBotOptions;
     private readonly OKXRestClient _restClient;
@@ -28,8 +28,6 @@ public class OKXConnector
     private readonly ConcurrentDictionary<OKXInstrumentType, List<OKXInstrument>> _symbols = new();
     private readonly ConcurrentDictionary<string, IObservable<OKXTicker>> _symbolTickerObservables = new();
     private readonly ConcurrentDictionary<string, decimal> _currentPrices = new();
-
-    private readonly object _orderUpdateLock = new();
 
     private CancellationTokenSource _cts = null!;
     private IObservable<OKXPosition> _positionUpdateObservable = null!;
@@ -109,12 +107,14 @@ public class OKXConnector
     public IEnumerable<OKXOrder> GetCurrentOrders(OKXInstrument instrument)
     {
         return GetActiveOrders(instrument)
+            .Where(o => o.GetGridLineIndex() > 0)
             .Where(o => o.InstrumentType == instrument.InstrumentType && o.Symbol == instrument.Symbol);
     }
 
     public async Task<IEnumerable<OKXOrderPlaceResponse>?> PlaceOrdersAsync(IEnumerable<OKXOrderPlaceRequest> placeRequests)
     {
-        var result = await _socketClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(placeRequests);
+        var orderPlaceRequests = placeRequests as OKXOrderPlaceRequest[] ?? placeRequests.ToArray();
+        var result = await _socketClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(orderPlaceRequests);
         //var result = await _restClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(placeRequests);
         if (!result.GetResultOrError(out var data, out var error))
         {
@@ -124,18 +124,27 @@ public class OKXConnector
 
         var dataArr = data.ToArray();
 
-        foreach (var response in dataArr.Where(r => r.Code != "0"))
+        foreach (var response in dataArr.Where(r => r.Code != "0")
+                     .ToDictionary(k => k,
+                         v => orderPlaceRequests
+                             .Single(r => r.ClientOrderId == v.ClientOrderId)
+                     ))
         {
-            _log.LogWarning("Error placing order: {Message}", response.Message);
+            _log.LogWarning("{Symbol} - Error placing order: {Message}", response.Value.Symbol, response.Key.Message);
         }
 
         return dataArr;
     }
 
-    public async Task<IEnumerable<OKXOrderCancelResponse>?> CancelOrdersAsync(IEnumerable<OKXOrderCancelRequest> cancelRequests)
+    public async Task<IEnumerable<OKXOrderCancelResponse>?> CancelOrdersAsync(IEnumerable<OKXOrderCancelRequest> cancelRequests, bool useApi = false)
     {
-        var result = await _socketClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(cancelRequests);
-        //var result = await _restClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(cancelRequests);
+        var ordersToCancel = cancelRequests as OKXOrderCancelRequest[] ?? cancelRequests.ToArray();
+
+        if (ordersToCancel.Length == 0) return Enumerable.Empty<OKXOrderCancelResponse>();
+
+        var result = useApi
+            ? await _restClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(ordersToCancel)
+            : await _socketClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(ordersToCancel);
         if (!result.GetResultOrError(out var data, out var error))
         {
             _log.LogError("Error cancelling orders: {message}", error.Message);
@@ -144,9 +153,14 @@ public class OKXConnector
 
         var dataArr = data.ToArray();
 
-        foreach (var response in dataArr.Where(r => r.Code != "0"))
+        foreach (var response in dataArr
+                     .Where(r => r.Code != "0")
+                     .ToDictionary(k => k,
+                         v => ordersToCancel
+                             .Single(r => r.OrderId == v.OrderId.ToString())
+                     ))
         {
-            _log.LogWarning("Error cancelling order: {Message}", response.Message);
+            _log.LogWarning("{Symbol} - Error cancelling order: {Message}", response.Value.Symbol, response.Key.Message);
         }
 
         return dataArr;
@@ -164,6 +178,8 @@ public class OKXConnector
             .Select(_ => Observable.FromAsync(UpdateBalancesAsync)).Concat().Subscribe(ct);
         Observable.Timer(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60))
             .Select(_ => Observable.FromAsync(UpdateSymbolsAsync)).Concat().Subscribe(ct);
+        Observable.Timer(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))
+            .Select(_ => Observable.FromAsync(UpdateOrdersAsync)).Concat().Subscribe(ct);
 
         CreatePositionUpdateObservableAsync(ct);
         CreateOrderUpdateObservableAsync(ct);
@@ -216,15 +232,15 @@ public class OKXConnector
 
     private void AddOrUpdateActiveOrders(IEnumerable<OKXOrder> orders)
     {
+        var tempDictionary = new ConcurrentDictionary<string, ConcurrentDictionary<long, OKXOrder>>();
         foreach (var orderGroup in orders.Where(o => o.OrderId > 0).GroupBy(GetInstrumentKey))
         {
-            var activeOrders = GetActiveOrdersForKey(orderGroup.Key);
-            foreach (var order in orderGroup)
+            tempDictionary[orderGroup.Key] = new ConcurrentDictionary<long, OKXOrder>();
+            foreach (var order in orderGroup.Where(o => o.OrderId.HasValue && o.OrderId != 0))
             {
-                if (order.OrderId is null or 0) continue;
-
-                activeOrders.AddOrUpdate(order.OrderId.Value, order, (_, _) => order);
+                tempDictionary[orderGroup.Key].AddOrUpdate(order.OrderId!.Value, order, (_, _) => order);
             }
+            _orders[orderGroup.Key] = tempDictionary[orderGroup.Key];
         }
     }
 
@@ -307,6 +323,7 @@ public class OKXConnector
 
     private async Task UpdateOrdersAsync(CancellationToken ct)
     {
+        _log.LogInformation("Updating active orders.");
         foreach (var tradedSymbol in _gridBotOptions.Value.TradedSymbols)
         {
             await UpdateOrdersForSymbolAsync(tradedSymbol, ct);
@@ -372,7 +389,29 @@ public class OKXConnector
 
         void OnNext(T next)
         {
-            channel!.Writer.TryWrite(next);
+            channel.Writer.TryWrite(next);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var subscription in _socketSubscriptions)
+        {
+            await subscription.CloseAsync();
+        }
+
+        await CastAndDispose(_restClient);
+        await CastAndDispose(_socketClient);
+        await CastAndDispose(_cts);
+
+        return;
+
+        static async ValueTask CastAndDispose(IDisposable resource)
+        {
+            if (resource is IAsyncDisposable resourceAsyncDisposable)
+                await resourceAsyncDisposable.DisposeAsync();
+            else
+                resource.Dispose();
         }
     }
 }

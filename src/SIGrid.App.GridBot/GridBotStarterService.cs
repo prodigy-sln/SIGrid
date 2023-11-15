@@ -14,7 +14,8 @@ public class GridBotStarterService : BackgroundService
     private readonly OKXConnector _okxConnector;
     private readonly ILogger<GridBotStarterService> _log;
 
-    public GridBotStarterService(IOptions<SIGridOptions> options, IServiceProvider sp, OKXConnector okxConnector, ILogger<GridBotStarterService> log)
+    public GridBotStarterService(IOptions<SIGridOptions> options, IServiceProvider sp, OKXConnector okxConnector,
+        ILogger<GridBotStarterService> log)
     {
         _options = options;
         _sp = sp;
@@ -28,18 +29,32 @@ public class GridBotStarterService : BackgroundService
 
         var bots = _options.Value.TradedSymbols
             .Select(async symbol =>
-            {
-                try
                 {
-                    _log.LogInformation("{Symbol} - Starting bot with config: {BotConfiguration}", symbol.Symbol, JsonConvert.SerializeObject(symbol, Formatting.None));
-                    await ActivatorUtilities.CreateInstance<GridBot>(_sp, _okxConnector, symbol).StartAsync(stoppingToken);
+                    GridBot? bot = null;
+                    try
+                    {
+                        _log.LogInformation("{Symbol} - Starting bot with config: {BotConfiguration}", symbol.Symbol, JsonConvert.SerializeObject(symbol, Formatting.None));
+                        bot = ActivatorUtilities.CreateInstance<GridBot>(_sp, _okxConnector, symbol);
+                        await bot.StartAsync(stoppingToken);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _log.LogInformation("{Symbol} - Received stop signal, shutting down.", symbol.Symbol);
+
+                        if (bot != null)
+                        {
+                            await bot.CancelAllPendingOrders();
+                        }
+
+                        _log.LogInformation("{Symbol} - Bot stopped.", symbol.Symbol);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogError(ex, "Error running grid bot for '{Symbol}' on '{Exchange}'", symbol.Symbol,
+                            symbol.Exchange);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _log.LogError(ex, "Error running grid bot for '{Symbol}' on '{Exchange}'", symbol.Symbol, symbol.Exchange);
-                }
-            }
-        );
+            );
 
         await Task.WhenAll(bots);
     }

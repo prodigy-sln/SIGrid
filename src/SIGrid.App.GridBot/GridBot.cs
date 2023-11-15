@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reactive.Linq;
 using CryptoExchange.Net.CommonObjects;
 using Microsoft.Extensions.Logging;
@@ -49,12 +50,33 @@ public class GridBot
         _log.LogInformation("{Symbol} - Starting Up Bot: {BotConfig}", _tradedSymbol.Symbol, JsonConvert.SerializeObject(_tradedSymbol, Formatting.None));
         
         await LoadRequiredInformationAsync(stoppingToken);
+        _ = Task.Delay(_minDelayBetweenUpdates, stoppingToken)
+            .ContinueWith(async _ => await CancelAllPendingOrders(), stoppingToken);
         await SubscribeToExchangeUpdates(stoppingToken);
+        await CancelAllPendingOrders();
+    }
+
+    public async Task CancelAllPendingOrders()
+    {
+        var cancelRequests = _okx.GetCurrentOrders(_symbol)
+            .Where(o => !string.IsNullOrWhiteSpace(o.ClientOrderId) && o.GetGridLineIndex() > 0)
+            .Select(o => new OKXOrderCancelRequest
+            {
+                OrderId = o.OrderId.ToString(),
+                ClientOrderId = o.ClientOrderId,
+                Symbol = o.Symbol
+            });
+
+        await _okx.CancelOrdersAsync(cancelRequests);
     }
 
     private void UpdateCurrentPrice(decimal? newPrice)
     {
         _currentPrice = newPrice ?? _currentPrice;
+        
+        // Spot has always sell grid lines active if there is enough balance. No need to update the grid on price action.
+        if (_symbol.InstrumentType == OKXInstrumentType.Spot) return;
+
         var gridLine = GetGridLineForPrice(_currentPrice);
         if (gridLine > _currentGridLine && gridLine != 0)
         {
@@ -91,9 +113,11 @@ public class GridBot
             .Sample(_minDelayBetweenUpdates)
             .ToAsyncEnumerable();
 
-        var positionUpdates = _okx.GetPositionUpdateSubscription(_symbol)
-            .Sample(_minDelayBetweenUpdates)
-            .ToAsyncEnumerable();
+        var positionUpdates = _symbol.InstrumentType == OKXInstrumentType.Spot
+            ? AsyncEnumerable.Empty<OKXPosition>()
+            : _okx.GetPositionUpdateSubscription(_symbol)
+                .Sample(_symbol.InstrumentType == OKXInstrumentType.Spot ? _minDelayBetweenUpdates * 2 : _minDelayBetweenUpdates)
+                .ToAsyncEnumerable();
 
         var orderUpdates = _okx.GetOrderUpdateSubscription(_symbol)
             .ToAsyncEnumerable();
@@ -348,18 +372,48 @@ public class GridBot
     private IEnumerable<OKXOrderPlaceRequest> CreatePlaceRequestsFromGridLineInfos(
         IEnumerable<GridLineInfo> gridLineInfos, OKXOrderSide orderSide) =>
         gridLineInfos
-            .Select(l => new OKXOrderPlaceRequest
-            {
-                Symbol = _symbol.Symbol,
-                ClientOrderId = GridLineOrderId.Create(l.Line, orderSide, 0),
-                Price = l.Price,
-                Quantity = GetPositionQuantity(l.Price),
-                OrderSide = orderSide,
-                PositionSide = _positionSide,
-                OrderType = _orderType,
-                TradeMode = _tradeMode,
-                ReduceOnly = orderSide == OKXOrderSide.Sell
-            });
+            .Select(l => GetOrderPlaceRequestForGridLineInfo(l, orderSide));
+
+    private OKXOrderPlaceRequest GetOrderPlaceRequestForGridLineInfo(GridLineInfo gridLine, OKXOrderSide orderSide)
+    {
+        var request = new OKXOrderPlaceRequest
+        {
+            Symbol = _symbol.Symbol,
+            ClientOrderId = GridLineOrderId.Create(gridLine.Line, orderSide, 0),
+            Price = gridLine.Price,
+            Quantity = GetPositionQuantity(gridLine.Price, orderSide),
+            OrderSide = orderSide,
+            OrderType = _orderType,
+        };
+
+        switch (_symbol.InstrumentType)
+        {
+            case OKXInstrumentType.Any:
+                break;
+            case OKXInstrumentType.Spot:
+                request.Asset = _symbol.BaseAsset;
+                request.TradeMode = OKXTradeMode.Cash;
+                break;
+            case OKXInstrumentType.Margin:
+                request.TradeMode = _tradeMode;
+                break;
+            case OKXInstrumentType.Swap:
+                request.TradeMode = _tradeMode;
+                request.PositionSide = _positionSide;
+                request.ReduceOnly = orderSide == OKXOrderSide.Sell;
+                break;
+            case OKXInstrumentType.Futures:
+                break;
+            case OKXInstrumentType.Option:
+                break;
+            case OKXInstrumentType.Contracts:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
+        return request;
+    }
 
     private GridState GetCurrentGridState()
     {
@@ -386,35 +440,97 @@ public class GridBot
 
     private IEnumerable<GridLineInfo> GetDesiredSellLines()
     {
-        if (_position == null) yield break;
-        var quantity = _position.PositionsQuantity.GetValueOrDefault();
-        if (quantity == 0) yield break;
+        return _tradedSymbol.SymbolType.Equals(nameof(OKXInstrumentType.Spot), StringComparison.InvariantCultureIgnoreCase)
+            ? GetDesiredSellLinesForSpot() 
+            : GetDesiredSellLinesForPosition();
+    }
 
-        _log.LogTrace("{Symbol} - Building SELL desired state. Found position with quantity: {PositionQuantity}", _tradedSymbol.Symbol, quantity);
+    private IEnumerable<GridLineInfo> GetDesiredSellLinesForSpot()
+    {
+        return GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders);
+    }
+
+    private IEnumerable<GridLineInfo> GetDesiredSellLinesForPosition()
+    {
+        if (_position == null) yield break;
+        var availableQuantity = _position.PositionsQuantity.GetValueOrDefault();
+        if (availableQuantity == 0) yield break;
+
+        _log.LogTrace("{Symbol} - Building SELL desired state. Found position with quantity: {PositionQuantity}", _tradedSymbol.Symbol, availableQuantity);
 
         foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders))
         {
-            if (quantity <= 0) break;
+            if (availableQuantity <= 0) break;
 
-            var gridLineQuantity = GetPositionQuantity(gridLine.Price);
-            quantity -= gridLineQuantity;
+            var gridLineQuantity = GetPositionQuantity(gridLine.Price, OKXOrderSide.Sell);
+            availableQuantity -= gridLineQuantity;
 
-            _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine.Line, quantity);
+            _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine.Line, availableQuantity);
 
             yield return gridLine;
         }
     }
 
-    private decimal GetPositionQuantity(decimal price)
+    private decimal GetPositionQuantity(decimal price, OKXOrderSide orderSide)
     {
         if (_symbol == null)
         {
             throw new InvalidOperationException("Instrument not found.");
         }
 
+        if (_symbol.InstrumentType == OKXInstrumentType.Swap || _symbol.InstrumentType == OKXInstrumentType.Futures && _symbol.ContractValue.HasValue)
+        {
+            return GetLeveragedPositionQuantity(price);
+        }
+
+        if (_symbol.InstrumentType == OKXInstrumentType.Spot)
+        {
+            return GetSpotPositionQuantity(price, orderSide);
+        }
+
+        throw new InvalidOperationException($"No implementation for position quantity calculation of instrument type '{_symbol.InstrumentType}'.");
+    }
+
+    private decimal GetSpotPositionQuantity(decimal price, OKXOrderSide orderSide)
+    {
+        return _tradedSymbol.InvestCurrency switch
+        {
+            SIGridOptions.TradedSymbolOptions.InvestCurrencyType.Base => GetSpotPositionQuantityForBaseAsset(price),
+            SIGridOptions.TradedSymbolOptions.InvestCurrencyType.Quote => GetSpotPositionQuantityForQuoteAsset(price, orderSide),
+            _ => throw new ArgumentOutOfRangeException()
+        };
+    }
+
+    private decimal GetSpotPositionQuantityForBaseAsset(decimal price)
+    {
+        return _tradedSymbol.InvestPerGrid < _symbol.MinimumOrderSize
+            ? _symbol.MinimumOrderSize
+            : _tradedSymbol.InvestPerGrid;
+    }
+
+    private decimal GetSpotPositionQuantityForQuoteAsset(decimal price, OKXOrderSide orderSide)
+    {
+        var quantity = _tradedSymbol.InvestPerGrid / price;
+
+        if (orderSide == OKXOrderSide.Sell)
+        {
+            var fees = _feeRate.Maker.GetValueOrDefault() * (quantity * price) * 2;
+            var feesQuantity = fees / price;
+            quantity += Math.Abs(feesQuantity);
+        }
+
+        quantity = Math.Round(quantity, _symbol.LotSize.Scale, MidpointRounding.ToZero);
+
+        if (quantity < _symbol.MinimumOrderSize) return _symbol.MinimumOrderSize;
+        if (quantity % _symbol.LotSize != 0) quantity -= quantity % _symbol.LotSize;
+        return quantity;
+    }
+
+    private decimal GetLeveragedPositionQuantity(decimal price)
+    {
         if (!_symbol.ContractValue.HasValue)
         {
-            throw new InvalidOperationException("Cannot calculate quantity for instrument without contract value.");
+            throw new InvalidOperationException("Cannot calculate leveraged position size without contract value.");
         }
 
         var contractValue = _symbol.ContractValue.Value * price;
