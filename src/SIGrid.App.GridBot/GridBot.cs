@@ -401,6 +401,7 @@ public class GridBot
                 request.TradeMode = _tradeMode;
                 request.PositionSide = _positionSide;
                 request.ReduceOnly = orderSide == OKXOrderSide.Sell;
+                request.QuantityType = OKXQuantityAsset.QuoteAsset;
                 break;
             case OKXInstrumentType.Futures:
                 break;
@@ -478,17 +479,14 @@ public class GridBot
             throw new InvalidOperationException("Instrument not found.");
         }
 
-        if (_symbol.InstrumentType == OKXInstrumentType.Swap || _symbol.InstrumentType == OKXInstrumentType.Futures && _symbol.ContractValue.HasValue)
+        return _symbol.InstrumentType switch
         {
-            return GetLeveragedPositionQuantity(price);
-        }
-
-        if (_symbol.InstrumentType == OKXInstrumentType.Spot)
-        {
-            return GetSpotPositionQuantity(price, orderSide);
-        }
-
-        throw new InvalidOperationException($"No implementation for position quantity calculation of instrument type '{_symbol.InstrumentType}'.");
+            OKXInstrumentType.Swap or OKXInstrumentType.Futures when _symbol.ContractValue.HasValue =>
+                GetLeveragedPositionQuantity(price),
+            OKXInstrumentType.Spot => GetSpotPositionQuantity(price, orderSide),
+            _ => throw new InvalidOperationException(
+                $"{_symbol.Symbol} - No implementation for position quantity calculation of instrument type '{_symbol.InstrumentType}'.")
+        };
     }
 
     private decimal GetSpotPositionQuantity(decimal price, OKXOrderSide orderSide)
