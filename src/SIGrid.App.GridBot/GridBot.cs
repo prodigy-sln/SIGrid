@@ -1,7 +1,6 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Reactive.Linq;
-using CryptoExchange.Net.CommonObjects;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using OKX.Net.Enums;
@@ -15,21 +14,26 @@ using SIGrid.App.GridBot.OKX;
 
 namespace SIGrid.App.GridBot;
 
+// AbstractGridBot - FuturesGridBot, SpotGridBot - 
+
 public class GridBot
 {
-    private readonly SIGridOptions.TradedSymbolOptions _tradedSymbol;
-    private readonly OKXConnector _okx;
-    private readonly ILogger<GridBot> _log;
-    private readonly OKXInstrumentType _symbolType;
     private readonly OKXPositionSide _positionSide = OKXPositionSide.Long;
     private readonly OKXTradeMode _tradeMode = OKXTradeMode.Cross;
     private readonly OKXMarginMode _marginMode = OKXMarginMode.Cross;
     private readonly OKXOrderType _orderType = OKXOrderType.LimitOrder;
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly TimeSpan _minDelayBetweenUpdates = TimeSpan.FromSeconds(0.5);
-    private readonly ConcurrentDictionary<int, byte> _pendingOrderIds = new();
     private readonly TimeSpan _pendingOrderTimeout = TimeSpan.FromSeconds(5);
+    
+    private readonly SIGridOptions.TradedSymbolOptions _tradedSymbol;
+    private readonly OKXConnector _okx;
+    private readonly ILogger<GridBot> _log;
+    private readonly OKXInstrumentType _symbolType;
+    
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private readonly ConcurrentDictionary<int, byte> _pendingOrderIds = new();
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _pendingOrderRemovalTaskTokens = new();
+
     private OKXInstrument _symbol = null!; // Initialized on start.
     private OKXFeeRate _feeRate = null!; // Initialized on start.
     private decimal _currentPrice;
@@ -182,7 +186,7 @@ public class GridBot
 
         UpdateCurrentPrice(ticker.LastPrice);
 
-        await HandleUpdateEventAsync();
+        await UpdateGridStateAsync();
     }
 
     private async Task HandleOrderUpdateAsync(OKXOrder orderUpdate)
@@ -202,7 +206,7 @@ public class GridBot
             RemovePendingOrder(orderUpdate);
         }
 
-        await HandleUpdateEventAsync();
+        await UpdateGridStateAsync();
     }
 
     private void RemovePendingOrder(OKXOrder orderUpdate)
@@ -225,10 +229,23 @@ public class GridBot
     {
         Interlocked.Exchange(ref _position, positionUpdate);
 
-        await HandleUpdateEventAsync();
+        if (_position == null || _position.PositionsQuantity.GetValueOrDefault() == 0.0M)
+        {
+            await OpenPositionAtMarketPriceAsync();
+        }
+
+        await UpdateGridStateAsync();
     }
 
-    private async Task HandleUpdateEventAsync()
+    private async Task OpenPositionAtMarketPriceAsync()
+    {
+        _log.LogInformation("{Symbol} - No position found. Opening at market price.", _tradedSymbol.Symbol);
+        var request = GetOrderPlaceRequestForGridLineInfo(new GridLineInfo(_currentGridLine, GetGridLineForPrice(_currentPrice)), OKXOrderSide.Buy);
+        request.OrderType = OKXOrderType.MarketOrder;
+        await _okx.PlaceOrdersAsync(new[] { request });
+    }
+
+    private async Task UpdateGridStateAsync()
     {
         var now = DateTime.UtcNow;
         if (now <= _lastUpdateDate.AddTicks(_minDelayBetweenUpdates.Ticks)) return;
@@ -461,10 +478,10 @@ public class GridBot
 
         foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders))
         {
-            if (availableQuantity <= 0) break;
-
             var gridLineQuantity = GetPositionQuantity(gridLine.Price, OKXOrderSide.Sell);
             availableQuantity -= gridLineQuantity;
+
+            if (availableQuantity < 0) break;
 
             _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine.Line, availableQuantity);
 
