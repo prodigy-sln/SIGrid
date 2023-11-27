@@ -111,9 +111,22 @@ public class OKXConnector : IAsyncDisposable
             .Where(o => o.InstrumentType == instrument.InstrumentType && o.Symbol == instrument.Symbol);
     }
 
+    private static int MaxBulkRequestSize = 20;
+
     public async Task<IEnumerable<OKXOrderPlaceResponse>?> PlaceOrdersAsync(IEnumerable<OKXOrderPlaceRequest> placeRequests)
     {
         var orderPlaceRequests = placeRequests as OKXOrderPlaceRequest[] ?? placeRequests.ToArray();
+
+        if (orderPlaceRequests.Length == 0) return Enumerable.Empty<OKXOrderPlaceResponse>();
+
+        if (orderPlaceRequests.Length > MaxBulkRequestSize)
+        {
+            var results = await Task.WhenAll(orderPlaceRequests
+                .Slice(MaxBulkRequestSize)
+                .Select(PlaceOrdersAsync));
+            return results.WhereNotNull().SelectMany(r => r);
+        }
+
         var result = await _socketClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(orderPlaceRequests);
         //var result = await _restClient.UnifiedApi.Trading.PlaceMultipleOrdersAsync(placeRequests);
         if (!result.GetResultOrError(out var data, out var error))
@@ -141,6 +154,12 @@ public class OKXConnector : IAsyncDisposable
         var ordersToCancel = cancelRequests as OKXOrderCancelRequest[] ?? cancelRequests.ToArray();
 
         if (ordersToCancel.Length == 0) return Enumerable.Empty<OKXOrderCancelResponse>();
+
+        if (ordersToCancel.Length > MaxBulkRequestSize)
+        {
+            return (await Task.WhenAll(ordersToCancel.Slice(MaxBulkRequestSize).Select(g => CancelOrdersAsync(g))))
+                .WhereNotNull().SelectMany(r => r);
+        }
 
         var result = useApi
             ? await _restClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(ordersToCancel)
