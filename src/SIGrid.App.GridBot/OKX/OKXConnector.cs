@@ -337,12 +337,12 @@ public class OKXConnector : IAsyncDisposable
         }
 
         AccountBalance = data;
-        _log.LogInformation("Balance Updated. Total Equity: {totalEquity:#.000}", AccountBalance.TotalEquity);
+        _log.LogTrace("Balance Updated. Total Equity: {totalEquity:#.000}", AccountBalance.TotalEquity);
     }
 
     private async Task UpdateOrdersAsync(CancellationToken ct)
     {
-        _log.LogInformation("Updating active orders.");
+        _log.LogTrace("Updating active orders.");
         foreach (var tradedSymbol in _gridBotOptions.Value.TradedSymbols)
         {
             await UpdateOrdersForSymbolAsync(tradedSymbol, ct);
