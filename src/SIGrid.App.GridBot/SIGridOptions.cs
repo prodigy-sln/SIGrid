@@ -19,6 +19,10 @@ public class SIGridOptions
 
         public InvestCurrencyType InvestCurrency { get; set; }
 
+        public decimal? MinPrice { get; set; }
+
+        public decimal? MaxPrice { get; set; }
+
         public decimal InvestPerGrid { get; set; } = 10.0M;
 
         public decimal TakeProfitPercent { get; set; } = 1.0M;

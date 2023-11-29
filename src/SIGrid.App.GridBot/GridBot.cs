@@ -453,14 +453,21 @@ public class GridBot
         return GridCalculator.GetGridBuyLinesAndPrices(
             _currentGridLine,
             _tradedSymbol.TakeProfitPercent,
-            _tradedSymbol.MaxActiveBuyOrders);
+            _tradedSymbol.MaxActiveBuyOrders)
+            .Where(IsGridLineWithinMinAndMaxPriceRange);
     }
 
     private IEnumerable<GridLineInfo> GetDesiredSellLines()
     {
-        return _tradedSymbol.SymbolType.Equals(nameof(OKXInstrumentType.Spot), StringComparison.InvariantCultureIgnoreCase)
-            ? GetDesiredSellLinesForSpot() 
-            : GetDesiredSellLinesForPosition();
+        return (_tradedSymbol.SymbolType.Equals(nameof(OKXInstrumentType.Spot), StringComparison.InvariantCultureIgnoreCase)
+                ? GetDesiredSellLinesForSpot() 
+                : GetDesiredSellLinesForPosition()
+            ).Where(IsGridLineWithinMinAndMaxPriceRange);
+    }
+
+    private bool IsGridLineWithinMinAndMaxPriceRange(GridLineInfo gridLineInfo)
+    {
+        return gridLineInfo.Price >= (_tradedSymbol.MinPrice ?? 0) && gridLineInfo.Price <= (_tradedSymbol.MaxPrice ?? decimal.MaxValue);
     }
 
     private IEnumerable<GridLineInfo> GetDesiredSellLinesForSpot()
