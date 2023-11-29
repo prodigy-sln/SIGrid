@@ -239,7 +239,9 @@ public class GridBot
 
     private async Task EnsurePositionOpen()
     {
-        if (_position == null || _position.PositionsQuantity.GetValueOrDefault() == 0.0M)
+        if (_symbol.InstrumentType == OKXInstrumentType.Spot) return;
+
+        if ((_symbol.InstrumentType is OKXInstrumentType.Swap or OKXInstrumentType.Futures or OKXInstrumentType.Margin) && (_position == null || _position.PositionsQuantity.GetValueOrDefault() == 0.0M))
         {
             await OpenPositionAtMarketPriceAsync();
         }
