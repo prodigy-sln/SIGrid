@@ -162,7 +162,7 @@ public class OKXConnector : IAsyncDisposable
         }
 
         var result = useApi
-            ? await _restClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(ordersToCancel)
+            ? await ApiCallHelper.ExecuteWithRetry(() => _restClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(ordersToCancel))
             : await _socketClient.UnifiedApi.Trading.CancelMultipleOrdersAsync(ordersToCancel);
         if (!result.GetResultOrError(out var data, out var error))
         {
@@ -183,6 +183,18 @@ public class OKXConnector : IAsyncDisposable
         }
 
         return dataArr;
+    }
+
+    public async Task<IEnumerable<OKXPosition>> GetOpenPositionsAsync(OKXInstrument instrument)
+    {
+        var positionsResult = await ApiCallHelper.ExecuteWithRetry(() => _restClient.UnifiedApi.Account.GetAccountPositionsAsync(instrument.InstrumentType, instrument.Symbol));
+        if (!positionsResult.GetResultOrError(out var data, out var error))
+        {
+            _log.LogError("Error loading positions: {message}", error.Message);
+            return Enumerable.Empty<OKXPosition>();
+        }
+
+        return data;
     }
 
     private string GetInstrumentKey(OKXInstrument instrument) => 

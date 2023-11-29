@@ -105,10 +105,14 @@ public class GridBot
         _symbol = symbol ?? throw new Exception($"The symbol '{_tradedSymbol.Symbol}' is not present on the exchange.");
 
         var feeRate = await _okx.GetFeeRateAsync(_symbol);
-
         _feeRate = feeRate ?? throw new Exception($"Unable to retrieve fee rate info for '{_tradedSymbol.Symbol}'.");
+
         UpdateCurrentPrice(await _okx.GetCurrentPriceAsync(_symbol, ct));
         UpdateCurrentGridLine(GetGridLineForPrice(_currentPrice));
+
+        var positions = await _okx.GetOpenPositionsAsync(_symbol);
+        _position = positions.FirstOrDefault(p => p.PositionSide == _positionSide);
+        await EnsurePositionOpen();
     }
 
     private async Task SubscribeToExchangeUpdates(CancellationToken ct)
@@ -229,12 +233,16 @@ public class GridBot
     {
         Interlocked.Exchange(ref _position, positionUpdate);
 
+        await EnsurePositionOpen();
+        await UpdateGridStateAsync();
+    }
+
+    private async Task EnsurePositionOpen()
+    {
         if (_position == null || _position.PositionsQuantity.GetValueOrDefault() == 0.0M)
         {
             await OpenPositionAtMarketPriceAsync();
         }
-
-        await UpdateGridStateAsync();
     }
 
     private async Task OpenPositionAtMarketPriceAsync()
