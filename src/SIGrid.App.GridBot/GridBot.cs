@@ -555,9 +555,19 @@ public class GridBot
             throw new InvalidOperationException("Cannot calculate leveraged position size without contract value.");
         }
 
-        var contractValue = _symbol.ContractValue.Value * price;
+        decimal usdValuePerContract;
+
+        if (_symbol is { InstrumentType: OKXInstrumentType.Swap, ContractType: OKXContractType.Inverse })
+        {
+            usdValuePerContract = _symbol.ContractValue.Value;
+        }
+        else
+        {
+            usdValuePerContract = _symbol.ContractValue.Value * price;
+        }
+
         var leveragedAmount = _tradedSymbol.InvestPerGrid * _tradedSymbol.Leverage;
-        var quantity = Math.Round(leveragedAmount / contractValue, _symbol.LotSize.Scale, MidpointRounding.ToZero);
+        var quantity = Math.Round(leveragedAmount / usdValuePerContract, _symbol.LotSize.Scale, MidpointRounding.ToZero);
         if (quantity < _symbol.LotSize) quantity = _symbol.LotSize;
         if (quantity % _symbol.LotSize != 0)
         {
