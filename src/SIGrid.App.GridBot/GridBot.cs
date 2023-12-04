@@ -496,9 +496,18 @@ public class GridBot
         foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders))
         {
             var gridLineQuantity = GetPositionQuantity(gridLine.Price, OKXOrderSide.Sell);
+
+            if (availableQuantity - gridLineQuantity < 0)
+            {
+                gridLineQuantity = availableQuantity;
+            }
+
             availableQuantity -= gridLineQuantity;
 
-            if (availableQuantity < 0) break;
+            if (gridLineQuantity <= 0)
+            {
+                break;
+            }
 
             _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine.Line, availableQuantity);
 
