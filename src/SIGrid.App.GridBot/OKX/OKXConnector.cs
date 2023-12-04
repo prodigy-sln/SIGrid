@@ -187,10 +187,15 @@ public class OKXConnector : IAsyncDisposable
 
     public async Task<IEnumerable<OKXPosition>> GetOpenPositionsAsync(OKXInstrument instrument)
     {
+        if (instrument.InstrumentType == OKXInstrumentType.Spot)
+        {
+            return Enumerable.Empty<OKXPosition>();
+        }
+
         var positionsResult = await ApiCallHelper.ExecuteWithRetry(() => _restClient.UnifiedApi.Account.GetAccountPositionsAsync(instrument.InstrumentType, instrument.Symbol));
         if (!positionsResult.GetResultOrError(out var data, out var error))
         {
-            _log.LogError("Error loading positions: {message}", error.Message);
+            _log.LogError("Error loading positions for symbol {Symbol}: {message}", instrument.Symbol, error.Message);
             return Enumerable.Empty<OKXPosition>();
         }
 
