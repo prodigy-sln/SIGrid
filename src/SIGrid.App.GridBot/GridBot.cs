@@ -249,9 +249,33 @@ public class GridBot
 
     private async Task OpenPositionAtMarketPriceAsync()
     {
+        if (_pendingOrderIds.ContainsKey(_currentGridLine)) return;
+        SetupPendingOrder(_currentGridLine);
+
         _log.LogInformation("{Symbol} - No position found. Opening at market price.", _tradedSymbol.Symbol);
+
+        var ticker = await _okx.GetTickerAsync(_symbol);
+        
         var request = GetOrderPlaceRequestForGridLineInfo(new GridLineInfo(_currentGridLine, GetGridLineForPrice(_currentPrice)), OKXOrderSide.Buy);
-        request.OrderType = OKXOrderType.MarketOrder;
+
+        if (ticker == null || !ticker.BestBidPrice.HasValue || !ticker.BestAskPrice.HasValue)
+        {
+            _log.LogWarning("{Symbol} - Ticker not available. Opening at market price.", _symbol.Symbol);
+            request.OrderType = OKXOrderType.MarketOrder;
+        }
+        else
+        {
+            var spread = ticker.BestAskPrice.Value - ticker.BestBidPrice.Value;
+            if (spread > _symbol.TickSize)
+            {
+                request.Price = ticker.BestAskSize!.Value - _symbol.TickSize;
+            }
+            else
+            {
+                request.Price = ticker.BestBidPrice.Value;
+            }
+        }
+
         await _okx.PlaceOrdersAsync(new[] { request });
     }
 

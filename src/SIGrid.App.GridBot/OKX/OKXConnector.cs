@@ -202,6 +202,18 @@ public class OKXConnector : IAsyncDisposable
         return data;
     }
 
+    public async Task<OKXTicker?> GetTickerAsync(OKXInstrument instrument)
+    {
+        var ticker = await ApiCallHelper.ExecuteWithRetry(() => _restClient.UnifiedApi.ExchangeData.GetTickerAsync(instrument.Symbol));
+        if (!ticker.GetResultOrError(out var data, out var error))
+        {
+            _log.LogError("Error loading ticket data for symbol {Symbol}: {message}", instrument.Symbol, error.Message);
+            return null;
+        }
+
+        return data;
+    }
+
     private string GetInstrumentKey(OKXInstrument instrument) => 
         $"{instrument.InstrumentType}_{instrument.Symbol}";
 
