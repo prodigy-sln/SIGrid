@@ -233,7 +233,6 @@ public class GridBot
     {
         Interlocked.Exchange(ref _position, positionUpdate);
 
-        await EnsurePositionOpen();
         await UpdateGridStateAsync();
     }
 
@@ -289,9 +288,10 @@ public class GridBot
         {
             if (now <= _lastUpdateDate.AddTicks(_minDelayBetweenUpdates.Ticks)) return;
             _lastUpdateDate = DateTime.UtcNow;
-
+            
             var desiredState = BuildGridDesiredState();
             await EnsureGridStateAsync(desiredState);
+            await EnsurePositionOpen();
         }
         finally
         {
