@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using System.Reactive.Linq;
 using System.Text;
+using CryptoExchange.Net.CommonObjects;
+using CryptoExchange.Net.Requests;
+using JasperFx.Core;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using OKX.Net.Enums;
@@ -28,7 +31,6 @@ public class GridBot
     private readonly SIGridOptions.TradedSymbolOptions _tradedSymbol;
     private readonly OKXConnector _okx;
     private readonly ILogger<GridBot> _log;
-    private readonly OKXInstrumentType _symbolType;
     
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly ConcurrentDictionary<int, byte> _pendingOrderIds = new();
@@ -46,7 +48,6 @@ public class GridBot
         _tradedSymbol = tradedSymbol;
         _okx = okxConnector;
         _log = log;
-        _symbolType = Enum.Parse<OKXInstrumentType>(_tradedSymbol.SymbolType);
     }
 
     public async Task StartAsync(CancellationToken stoppingToken)
@@ -112,7 +113,6 @@ public class GridBot
 
         var positions = await _okx.GetOpenPositionsAsync(_symbol);
         _position = positions.FirstOrDefault(p => p.PositionSide == _positionSide);
-        await EnsurePositionOpen();
     }
 
     private async Task SubscribeToExchangeUpdates(CancellationToken ct)
@@ -236,46 +236,22 @@ public class GridBot
         await UpdateGridStateAsync();
     }
 
-    private async Task EnsurePositionOpen()
+    private async Task<decimal?> GetPriceForImmediateOpenPositionOrderAsync()
     {
-        if (_symbol.InstrumentType == OKXInstrumentType.Spot) return;
-
-        if ((_symbol.InstrumentType is OKXInstrumentType.Swap or OKXInstrumentType.Futures or OKXInstrumentType.Margin) && (_position == null || _position.PositionsQuantity.GetValueOrDefault() == 0.0M))
-        {
-            await PlaceOrderRightBelowAskPriceAsync();
-        }
-    }
-
-    private async Task PlaceOrderRightBelowAskPriceAsync()
-    {
-        if (_pendingOrderIds.ContainsKey(_currentGridLine)) return;
-        SetupPendingOrder(_currentGridLine);
-
-        _log.LogInformation("{Symbol} - No position found. Opening at market price.", _tradedSymbol.Symbol);
-
         var ticker = await _okx.GetTickerAsync(_symbol);
-        
-        var request = GetOrderPlaceRequestForGridLineInfo(new GridLineInfo(_currentGridLine, _currentPrice), OKXOrderSide.Buy);
-
         if (ticker == null || !ticker.BestBidPrice.HasValue || !ticker.BestAskPrice.HasValue)
         {
             _log.LogWarning("{Symbol} - Ticker not available. Opening at market price.", _symbol.Symbol);
-            request.OrderType = OKXOrderType.MarketOrder;
-        }
-        else
-        {
-            var spread = ticker.BestAskPrice.Value - ticker.BestBidPrice.Value;
-            if (spread > _symbol.TickSize)
-            {
-                request.Price = ticker.BestAskSize!.Value - _symbol.TickSize;
-            }
-            else
-            {
-                request.Price = ticker.BestBidPrice.Value;
-            }
+            return null;
         }
 
-        await _okx.PlaceOrdersAsync(new[] { request });
+        var spread = ticker.BestAskPrice.Value - ticker.BestBidPrice.Value;
+        if (spread > _symbol.TickSize)
+        {
+            return ticker.BestAskSize!.Value - _symbol.TickSize;
+        }
+
+        return ticker.BestBidPrice.Value;
     }
 
     private async Task UpdateGridStateAsync()
@@ -289,9 +265,8 @@ public class GridBot
             if (now <= _lastUpdateDate.AddTicks(_minDelayBetweenUpdates.Ticks)) return;
             _lastUpdateDate = DateTime.UtcNow;
             
-            var desiredState = BuildGridDesiredState();
+            var desiredState = await BuildGridDesiredState();
             await EnsureGridStateAsync(desiredState);
-            await EnsurePositionOpen();
         }
         finally
         {
@@ -299,10 +274,10 @@ public class GridBot
         }
     }
 
-    private GridState BuildGridDesiredState() =>
+    private async Task<GridState> BuildGridDesiredState() =>
         new(
-            GetDesiredBuyLines().ToArray(),
-            GetDesiredSellLines().ToArray()
+            await GetDesiredBuyLines(),
+            GetDesiredSellLines()
         );
 
     private async Task EnsureGridStateAsync(GridState desiredState)
@@ -482,21 +457,36 @@ public class GridBot
         return new GridState(buyOrders, sellOrders);
     }
 
-    private IEnumerable<GridLineInfo> GetDesiredBuyLines()
+    private async Task<GridLineInfo[]> GetDesiredBuyLines()
     {
-        return GridCalculator.GetGridBuyLinesAndPrices(
+        var gridLineInfos = GridCalculator.GetGridBuyLinesAndPrices(
             _currentGridLine,
             _tradedSymbol.TakeProfitPercent,
-            _tradedSymbol.MaxActiveBuyOrders)
-            .Where(IsGridLineWithinMinAndMaxPriceRange);
+            _tradedSymbol.MaxActiveBuyOrders);
+        
+        if (_symbol.InstrumentType != OKXInstrumentType.Spot && !HasOpenPosition())
+        {
+            gridLineInfos = gridLineInfos.Prepend(await GetDesiredBuyLineForImmediatePositionOpenAsync());
+        }
+
+        return gridLineInfos.Where(IsGridLineWithinMinAndMaxPriceRange).ToArray();
     }
 
-    private IEnumerable<GridLineInfo> GetDesiredSellLines()
+    private async Task<GridLineInfo> GetDesiredBuyLineForImmediatePositionOpenAsync()
     {
-        return (_tradedSymbol.SymbolType.Equals(nameof(OKXInstrumentType.Spot), StringComparison.InvariantCultureIgnoreCase)
-                ? GetDesiredSellLinesForSpot() 
-                : GetDesiredSellLinesForPosition()
-            ).Where(IsGridLineWithinMinAndMaxPriceRange);
+        var price = await GetPriceForImmediateOpenPositionOrderAsync();
+        return new GridLineInfo(_currentGridLine, price ?? _currentPrice);
+    }
+
+    private GridLineInfo[] GetDesiredSellLines()
+    {
+        return (_tradedSymbol.SymbolType.Equals(nameof(OKXInstrumentType.Spot),
+                    StringComparison.InvariantCultureIgnoreCase)
+                    ? GetDesiredSellLinesForSpot()
+                    : GetDesiredSellLinesForPosition()
+            )
+            .Where(IsGridLineWithinMinAndMaxPriceRange)
+            .ToArray();
     }
 
     private bool IsGridLineWithinMinAndMaxPriceRange(GridLineInfo gridLineInfo)
@@ -511,8 +501,8 @@ public class GridBot
 
     private IEnumerable<GridLineInfo> GetDesiredSellLinesForPosition()
     {
-        if (_position == null) yield break;
-        var availableQuantity = _position.PositionsQuantity.GetValueOrDefault();
+        if (!HasOpenPosition()) yield break;
+        var availableQuantity = _position!.PositionsQuantity.GetValueOrDefault();
         if (availableQuantity == 0) yield break;
 
         _log.LogTrace("{Symbol} - Building SELL desired state. Found position with quantity: {PositionQuantity}", _tradedSymbol.Symbol, availableQuantity);
@@ -560,13 +550,13 @@ public class GridBot
     {
         return _tradedSymbol.InvestCurrency switch
         {
-            SIGridOptions.TradedSymbolOptions.InvestCurrencyType.Base => GetSpotPositionQuantityForBaseAsset(price),
+            SIGridOptions.TradedSymbolOptions.InvestCurrencyType.Base => GetSpotPositionQuantityForBaseAsset(),
             SIGridOptions.TradedSymbolOptions.InvestCurrencyType.Quote => GetSpotPositionQuantityForQuoteAsset(price, orderSide),
             _ => throw new ArgumentOutOfRangeException()
         };
     }
 
-    private decimal GetSpotPositionQuantityForBaseAsset(decimal price)
+    private decimal GetSpotPositionQuantityForBaseAsset()
     {
         return _tradedSymbol.InvestPerGrid < _symbol.MinimumOrderSize
             ? _symbol.MinimumOrderSize
@@ -618,5 +608,10 @@ public class GridBot
         }
 
         return quantity;
+    }
+
+    private bool HasOpenPosition()
+    {
+        return _position?.PositionsQuantity > 0;
     }
 }

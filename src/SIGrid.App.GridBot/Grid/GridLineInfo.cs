@@ -15,5 +15,5 @@ public struct GridLineInfo
 
     public decimal Price { get; init; }
 
-    public OKXOrder? Order { get; init; }
+    public OKXOrder? Order { get; set; }
 }

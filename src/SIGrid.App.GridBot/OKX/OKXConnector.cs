@@ -18,6 +18,8 @@ namespace SIGrid.App.GridBot.OKX;
 
 public class OKXConnector : IAsyncDisposable
 {
+    private static readonly int MaxBulkRequestSize = 20;
+
     private readonly IOptions<SIGridOptions> _gridBotOptions;
     private readonly OKXRestClient _restClient;
     private readonly OKXSocketClient _socketClient;
@@ -110,8 +112,6 @@ public class OKXConnector : IAsyncDisposable
             .Where(o => o.GetGridLineIndex() > 0)
             .Where(o => o.InstrumentType == instrument.InstrumentType && o.Symbol == instrument.Symbol);
     }
-
-    private static int MaxBulkRequestSize = 20;
 
     public async Task<IEnumerable<OKXOrderPlaceResponse>?> PlaceOrdersAsync(IEnumerable<OKXOrderPlaceRequest> placeRequests)
     {
@@ -214,10 +214,10 @@ public class OKXConnector : IAsyncDisposable
         return data;
     }
 
-    private string GetInstrumentKey(OKXInstrument instrument) => 
+    private static string GetInstrumentKey(OKXInstrument instrument) => 
         $"{instrument.InstrumentType}_{instrument.Symbol}";
 
-    private string GetInstrumentKey(OKXOrder order) =>
+    private static string GetInstrumentKey(OKXOrder order) =>
         $"{order.InstrumentType}_{order.Symbol}";
 
     private void SubscribeBackgroundUpdates(CancellationToken ct)
@@ -451,6 +451,8 @@ public class OKXConnector : IAsyncDisposable
         await CastAndDispose(_restClient);
         await CastAndDispose(_socketClient);
         await CastAndDispose(_cts);
+
+        GC.SuppressFinalize(this);
 
         return;
 
