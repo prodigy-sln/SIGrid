@@ -242,11 +242,11 @@ public class GridBot
 
         if ((_symbol.InstrumentType is OKXInstrumentType.Swap or OKXInstrumentType.Futures or OKXInstrumentType.Margin) && (_position == null || _position.PositionsQuantity.GetValueOrDefault() == 0.0M))
         {
-            await OpenPositionAtMarketPriceAsync();
+            await PlaceOrderRightBelowAskPriceAsync();
         }
     }
 
-    private async Task OpenPositionAtMarketPriceAsync()
+    private async Task PlaceOrderRightBelowAskPriceAsync()
     {
         if (_pendingOrderIds.ContainsKey(_currentGridLine)) return;
         SetupPendingOrder(_currentGridLine);
@@ -255,7 +255,7 @@ public class GridBot
 
         var ticker = await _okx.GetTickerAsync(_symbol);
         
-        var request = GetOrderPlaceRequestForGridLineInfo(new GridLineInfo(_currentGridLine, GetGridLineForPrice(_currentPrice)), OKXOrderSide.Buy);
+        var request = GetOrderPlaceRequestForGridLineInfo(new GridLineInfo(_currentGridLine, _currentPrice), OKXOrderSide.Buy);
 
         if (ticker == null || !ticker.BestBidPrice.HasValue || !ticker.BestAskPrice.HasValue)
         {
