@@ -12,4 +12,6 @@ public class OKXOptions
     
     [Required]
     public string ApiPassPhrase { get; set; } = null!;
+
+    public TimeSpan? RequestTimeout { get; set; }
 }

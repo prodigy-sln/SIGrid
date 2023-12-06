@@ -50,16 +50,33 @@ internal class Program
                         return new OKXApiCredentials(options.ApiKey, options.ApiSecret, options.ApiPassPhrase);
                     });
 
-                    services.AddSingleton(sp => new OKXRestClient(null, sp.GetRequiredService<ILoggerFactory>(), options =>
+                    services.AddSingleton(sp =>
                     {
-                        options.ApiCredentials = sp.GetRequiredService<OKXApiCredentials>();
-                    }));
+                        var okxOptions = sp.GetRequiredService<IOptions<OKXOptions>>().Value;
+                        return new OKXRestClient(null, sp.GetRequiredService<ILoggerFactory>(),
+                            options =>
+                            {
+                                options.ApiCredentials = sp.GetRequiredService<OKXApiCredentials>();
+                                if (okxOptions.RequestTimeout.HasValue)
+                                {
+                                    options.RequestTimeout = okxOptions.RequestTimeout.Value;
+                                }
+                            });
+                    });
 
-                    services.AddSingleton(sp => new OKXSocketClient(options =>
+                    services.AddSingleton(sp =>
                     {
-                        options.ApiCredentials = sp.GetRequiredService<OKXApiCredentials>();
-                        options.AutoReconnect = true;
-                    }, sp.GetRequiredService<ILoggerFactory>()));
+                        var okxOptions = sp.GetRequiredService<IOptions<OKXOptions>>().Value;
+                        return new OKXSocketClient(options =>
+                        {
+                            options.ApiCredentials = sp.GetRequiredService<OKXApiCredentials>();
+                            options.AutoReconnect = true;
+                            if (okxOptions.RequestTimeout.HasValue)
+                            {
+                                options.RequestTimeout = okxOptions.RequestTimeout.Value;
+                            }
+                        }, sp.GetRequiredService<ILoggerFactory>());
+                    });
 
                     services.AddTransient<GridBot>();
                 })
