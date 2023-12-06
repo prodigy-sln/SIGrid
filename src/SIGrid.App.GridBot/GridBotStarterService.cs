@@ -30,28 +30,33 @@ public class GridBotStarterService : BackgroundService
         var bots = _options.Value.TradedSymbols
             .Select(async symbol =>
                 {
-                    GridBot? bot = null;
-                    try
+                    bool stopTryStarting = false;
+                    while (!stopTryStarting)
                     {
-                        _log.LogInformation("{Symbol} - Starting bot with config: {BotConfiguration}", symbol.Symbol, JsonConvert.SerializeObject(symbol, Formatting.None));
-                        bot = ActivatorUtilities.CreateInstance<GridBot>(_sp, _okxConnector, symbol);
-                        await bot.StartAsync(stoppingToken);
-                    }
-                    catch (TaskCanceledException)
-                    {
-                        _log.LogInformation("{Symbol} - Received stop signal, shutting down.", symbol.Symbol);
-
-                        if (bot != null)
+                        GridBot? bot = null;
+                        try
                         {
-                            await bot.CancelAllPendingOrders();
+                            _log.LogInformation("{Symbol} - Starting bot with config: {BotConfiguration}", symbol.Symbol, JsonConvert.SerializeObject(symbol, Formatting.None));
+                            bot = ActivatorUtilities.CreateInstance<GridBot>(_sp, _okxConnector, symbol);
+                            await bot.StartAsync(stoppingToken);
+                            stopTryStarting = true;
                         }
+                        catch (TaskCanceledException)
+                        {
+                            stopTryStarting = true;
+                            _log.LogInformation("{Symbol} - Received stop signal, shutting down.", symbol.Symbol);
 
-                        _log.LogInformation("{Symbol} - Bot stopped.", symbol.Symbol);
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogError(ex, "Error running grid bot for '{Symbol}' on '{Exchange}'", symbol.Symbol,
-                            symbol.Exchange);
+                            if (bot != null)
+                            {
+                                await bot.CancelAllPendingOrders();
+                            }
+
+                            _log.LogInformation("{Symbol} - Bot stopped.", symbol.Symbol);
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogError(ex, "Error running grid bot for '{Symbol}' on '{Exchange}'", symbol.Symbol, symbol.Exchange);
+                        }
                     }
                 }
             );
