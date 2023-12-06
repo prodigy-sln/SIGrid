@@ -1,9 +1,5 @@
 using System.Collections.Concurrent;
 using System.Reactive.Linq;
-using System.Text;
-using CryptoExchange.Net.CommonObjects;
-using CryptoExchange.Net.Requests;
-using JasperFx.Core;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using OKX.Net.Enums;
@@ -538,7 +534,7 @@ public class GridBot
 
             _log.LogTrace("{Symbol} - Adding SELL desired line {OrderId}. Remaining quantity: {PositionQuantity}", _tradedSymbol.Symbol, gridLine.Line, availableQuantity);
 
-            yield return gridLine;
+            yield return new GridLineInfo(gridLine.Line, gridLine.Price, gridLineQuantity);
         }
     }
 
