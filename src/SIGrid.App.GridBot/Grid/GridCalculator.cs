@@ -21,26 +21,34 @@ public static class GridCalculator
         return (int)Math.Round(GetGridLineIndex(currentPrice, profitPerGrid, basePrice), 0, MidpointRounding.ToZero);
     }
 
-    public static IEnumerable<GridLineInfo> GetGridBuyLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
+    public static IEnumerable<GridLineInfo> GetGridBuyLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, Func<decimal,decimal> quantityFactory, int? priceScale = null, decimal basePrice = BasePrice)
     {
         var linesGenerated = 0;
         for (var line = startingLine - 1; linesGenerated < numLines; --line)
         {
             var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
+            if (priceScale.HasValue)
+            {
+                linePrice = Math.Round(linePrice, priceScale.Value, MidpointRounding.ToZero);
+            }
 
-            yield return new GridLineInfo(line, linePrice);
+            yield return new GridLineInfo(line, linePrice, quantityFactory(linePrice));
             ++linesGenerated;
         }
     }
 
-    public static IEnumerable<GridLineInfo> GetGridSellLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, decimal basePrice = BasePrice)
+    public static IEnumerable<GridLineInfo> GetGridSellLinesAndPrices(int startingLine, decimal profitPerGrid, int numLines, Func<decimal,decimal> quantityFactory, int? priceScale = null, decimal basePrice = BasePrice)
     {
         var linesGenerated = 0;
         for (var line = startingLine + 1; linesGenerated < numLines; ++line)
         {
             var linePrice = GetGridPrice(profitPerGrid, line, basePrice);
+            if (priceScale.HasValue)
+            {
+                linePrice = Math.Round(linePrice, priceScale.Value, MidpointRounding.ToZero);
+            }
 
-            yield return new GridLineInfo(line, linePrice);
+            yield return new GridLineInfo(line, linePrice, quantityFactory(linePrice));
             ++linesGenerated;
         }
     }

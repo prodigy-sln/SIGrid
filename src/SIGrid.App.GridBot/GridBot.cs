@@ -347,10 +347,10 @@ public class GridBot
          *  currentState not in desiredState => cancel
          */
         var buyCancelLines = CreateCancelRequestsFromGridLineInfos(
-            currentState.BuyOrderLines.ExceptBy(desiredState.BuyOrderLines.Select(l => l.Line), l => l.Line)
+            currentState.BuyOrderLines.ExceptBy(desiredState.BuyOrderLines, l => l, GridLineInfoEqualityComparer.Instance)
         );
         var sellCancelLines = CreateCancelRequestsFromGridLineInfos(
-            currentState.SellOrderLines.ExceptBy(desiredState.SellOrderLines.Select(l => l.Line), l => l.Line)
+            currentState.SellOrderLines.ExceptBy(desiredState.SellOrderLines, l => l, GridLineInfoEqualityComparer.Instance)
         );
 
         var duplicateLines = CreateCancelRequestsFromGridLineInfos(
@@ -371,11 +371,11 @@ public class GridBot
          * desiredState not in currentState => place
          */
         var buyPlaceLines = CreatePlaceRequestsFromGridLineInfos(
-            desiredState.BuyOrderLines.ExceptBy(currentState.BuyOrderLines.Select(l => l.Line), l => l.Line),
+            desiredState.BuyOrderLines.ExceptBy(currentState.BuyOrderLines, l => l, GridLineInfoEqualityComparer.Instance),
             OKXOrderSide.Buy
         );
         var sellPlaceLines = CreatePlaceRequestsFromGridLineInfos(
-            desiredState.SellOrderLines.ExceptBy(currentState.SellOrderLines.Select(l => l.Line), l => l.Line),
+            desiredState.SellOrderLines.ExceptBy(currentState.SellOrderLines, l => l, GridLineInfoEqualityComparer.Instance),
             OKXOrderSide.Sell
         );
 
@@ -462,7 +462,9 @@ public class GridBot
         var gridLineInfos = GridCalculator.GetGridBuyLinesAndPrices(
             _currentGridLine,
             _tradedSymbol.TakeProfitPercent,
-            _tradedSymbol.MaxActiveBuyOrders);
+            _tradedSymbol.MaxActiveBuyOrders,
+            (price) => GetPositionQuantity(price, OKXOrderSide.Buy),
+            _symbol.TickSize.Scale);
         
         if (_symbol.InstrumentType != OKXInstrumentType.Spot && !HasOpenPosition())
         {
@@ -474,8 +476,8 @@ public class GridBot
 
     private async Task<GridLineInfo> GetDesiredBuyLineForImmediatePositionOpenAsync()
     {
-        var price = await GetPriceForImmediateOpenPositionOrderAsync();
-        return new GridLineInfo(_currentGridLine, price ?? _currentPrice);
+        var price = await GetPriceForImmediateOpenPositionOrderAsync() ?? _currentPrice;
+        return new GridLineInfo(_currentGridLine, price, GetPositionQuantity(price, OKXOrderSide.Buy));
     }
 
     private GridLineInfo[] GetDesiredSellLines()
@@ -496,7 +498,12 @@ public class GridBot
 
     private IEnumerable<GridLineInfo> GetDesiredSellLinesForSpot()
     {
-        return GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders);
+        return GridCalculator.GetGridSellLinesAndPrices(
+            _currentGridLine,
+            _tradedSymbol.TakeProfitPercent,
+            _tradedSymbol.MaxActiveSellOrders,
+            (price) => GetPositionQuantity(price, OKXOrderSide.Sell),
+            _symbol.TickSize.Scale);
     }
 
     private IEnumerable<GridLineInfo> GetDesiredSellLinesForPosition()
@@ -507,7 +514,13 @@ public class GridBot
 
         _log.LogTrace("{Symbol} - Building SELL desired state. Found position with quantity: {PositionQuantity}", _tradedSymbol.Symbol, availableQuantity);
 
-        foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(_currentGridLine, _tradedSymbol.TakeProfitPercent, _tradedSymbol.MaxActiveSellOrders))
+        foreach (var gridLine in GridCalculator.GetGridSellLinesAndPrices(
+                     _currentGridLine,
+                     _tradedSymbol.TakeProfitPercent,
+                     _tradedSymbol.MaxActiveSellOrders,
+                     (price) => GetPositionQuantity(price, OKXOrderSide.Sell),
+                     _symbol.TickSize.Scale)
+                 )
         {
             var gridLineQuantity = GetPositionQuantity(gridLine.Price, OKXOrderSide.Sell);
 
