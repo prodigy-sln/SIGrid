@@ -241,13 +241,7 @@ public class GridBot
             return null;
         }
 
-        var spread = ticker.BestAskPrice.Value - ticker.BestBidPrice.Value;
-        if (spread > _symbol.TickSize)
-        {
-            return ticker.BestAskSize!.Value - _symbol.TickSize;
-        }
-
-        return ticker.BestBidPrice.Value;
+        return ticker.BestAskPrice.Value - (_symbol.TickSize * _symbol.TickSize.Scale);
     }
 
     private async Task UpdateGridStateAsync()
