@@ -167,7 +167,7 @@ public class GridBot
         {
             try
             {
-                if (positionUpdate.MarginMode != _marginMode) continue;
+                if (positionUpdate.MarginMode != _marginMode || positionUpdate.PositionSide != _positionSide) continue;
                 await HandlePositionUpdateAsync(positionUpdate);
             }
             catch (Exception ex)
