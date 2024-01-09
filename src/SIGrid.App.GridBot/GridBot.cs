@@ -74,9 +74,6 @@ public class GridBot
     private void UpdateCurrentPrice(decimal? newPrice)
     {
         _currentPrice = newPrice ?? _currentPrice;
-        
-        // Spot has always sell grid lines active if there is enough balance. No need to update the grid on price action.
-        if (_symbol.InstrumentType == OKXInstrumentType.Spot) return;
 
         var gridLine = GetGridLineForPrice(_currentPrice);
         if (gridLine > _currentGridLine && gridLine != 0)
