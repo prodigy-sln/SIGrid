@@ -233,6 +233,12 @@ public class OKXPosition
     public decimal? IndexPrice { get; set; }
 
     /// <summary>
+    /// Break-even price
+    /// </summary>
+    [JsonProperty("bePx")]
+    public decimal? BreakEvenPrice { get; set; }
+
+    /// <summary>
     /// Usd price
     /// </summary>
     [JsonProperty("usdPx")]
@@ -321,4 +327,56 @@ public class OKXPosition
     /// </summary>
     [JsonProperty("liqPenalty")]
     public decimal? LiquidationPenalty { get; set; }
+    /// <summary>
+    /// Realized profit and loss
+    /// </summary>
+    [JsonProperty("realizedPnl")]
+    public decimal? RealizedPnl { get; set; }
+    /// <summary>
+    /// Accumulated pnl of closing order(s)
+    /// </summary>
+    [JsonProperty("pnl")]
+    public decimal? Pnl { get; set; }
+    /// <summary>
+    /// Close position algo orders attached to the position
+    /// </summary>
+    [JsonProperty("closeOrderAlgo")]
+    public IEnumerable<OKXPositionCloseOrder> CloseOrderAlgo { get; set; } = Array.Empty<OKXPositionCloseOrder>();
+}
+
+/// <summary>
+/// Position close order info
+/// </summary>
+public class OKXPositionCloseOrder
+{
+    /// <summary>
+    /// Algo id
+    /// </summary>
+    [JsonProperty("algoId")]
+    public string AlgoId { get; set; } = string.Empty;
+    /// <summary>
+    /// Stop losse trigger price
+    /// </summary>
+    [JsonProperty("slTriggerPx")]
+    public decimal StopLossTriggerPrice { get; set; }
+    /// <summary>
+    /// Stop loss trigger price type
+    /// </summary>
+    [JsonProperty("slTriggerPxType"), JsonConverter(typeof(EnumConverter))]
+    public OXKTriggerPriceType StopLossTriggerType { get; set; }
+    /// <summary>
+    /// Take profit trigger price
+    /// </summary>
+    [JsonProperty("tpTriggerPx")]
+    public decimal TakeProfitTriggerPrice { get; set; }
+    /// <summary>
+    /// Take profit trigger price type
+    /// </summary>
+    [JsonProperty("tpTriggerPxType"), JsonConverter(typeof(EnumConverter))]
+    public OXKTriggerPriceType TakeProfitTriggerType { get; set; }
+    /// <summary>
+    /// Fraction of position to be closed when the algo order is triggered.
+    /// </summary>
+    [JsonProperty("closeFraction")]
+    public decimal? CloseFraction { get; set; }
 }

@@ -1,7 +1,10 @@
-﻿using CryptoExchange.Net.CommonObjects;
+﻿using CryptoExchange.Net.Clients;
+using CryptoExchange.Net.CommonObjects;
+using CryptoExchange.Net.Converters.MessageParsing;
 using CryptoExchange.Net.Interfaces.CommonClients;
 using OKX.Net.Interfaces.Clients.UnifiedApi;
 using OKX.Net.Objects;
+using OKX.Net.Objects.Core;
 using OKX.Net.Objects.Options;
 
 namespace OKX.Net.Clients.UnifiedApi;
@@ -11,7 +14,7 @@ internal class OKXRestClientUnifiedApi : RestApiClient, IOKXRestClientUnifiedApi
     #region Internal Fields
     private static TimeSyncState _timeSyncState = new("Unified Api");
 
-    internal readonly string _ref = "";
+    internal readonly string _ref = "078ee129065aBCDE";
 
     public event Action<OrderId>? OnOrderPlaced;
     public event Action<OrderId>? OnOrderCanceled;
@@ -34,7 +37,7 @@ internal class OKXRestClientUnifiedApi : RestApiClient, IOKXRestClientUnifiedApi
         Trading = new OKXRestClientUnifiedApiTrading(this);
         SubAccounts = new OKXRestClientUnifiedApiSubAccounts(this);
 
-        _ref = "";
+        _ref = !string.IsNullOrEmpty(options.BrokerId) ? options.BrokerId! : "1425d83a94fbBCDE";
 
         if (options.Environment.EnvironmentName == TradeEnvironmentNames.Testnet)
         {
@@ -51,7 +54,7 @@ internal class OKXRestClientUnifiedApi : RestApiClient, IOKXRestClientUnifiedApi
 
     internal async Task<WebCallResult<T>> ExecuteAsync<T>(Uri uri, HttpMethod method, CancellationToken ct, Dictionary<string, object>? parameters = null, bool signed = false, int weight = 1, bool ignoreRatelimit = false, HttpMethodParameterPosition? parameterPosition = null) where T : class
     {
-        var result = await SendRequestAsync<T>(uri, method, ct, parameters, signed, parameterPosition, requestWeight: weight, ignoreRatelimit: ignoreRatelimit).ConfigureAwait(false);
+        var result = await SendRequestAsync<T>(uri, method, ct, parameters, signed, parameterPosition: parameterPosition, requestWeight: weight, ignoreRatelimit: ignoreRatelimit).ConfigureAwait(false);
         if (!result) return result.AsError<T>(result.Error!);
 
         return result.As(result.Data);
@@ -81,7 +84,7 @@ internal class OKXRestClientUnifiedApi : RestApiClient, IOKXRestClientUnifiedApi
     /// <inheritdoc />
     protected override void WriteParamBody(IRequest request, SortedDictionary<string, object> parameters, string contentType)
     {
-        if (requestBodyFormat == RequestBodyFormat.Json)
+        if (RequestBodyFormat == RequestBodyFormat.Json)
         {
             if (parameters.Count == 1 && parameters.Keys.First() == "<BODY>")
             {
@@ -96,7 +99,7 @@ internal class OKXRestClientUnifiedApi : RestApiClient, IOKXRestClientUnifiedApi
                 request.SetContent(stringData, contentType);
             }
         }
-        else if (requestBodyFormat == RequestBodyFormat.FormData)
+        else if (RequestBodyFormat == RequestBodyFormat.FormData)
         {
             // Write the parameters as form data in the body
             var stringData = parameters.ToFormData();
@@ -105,16 +108,22 @@ internal class OKXRestClientUnifiedApi : RestApiClient, IOKXRestClientUnifiedApi
     }
 
     /// <inheritdoc />
-    protected override Error ParseErrorResponse(int httpStatusCode, IEnumerable<KeyValuePair<string, IEnumerable<string>>> responseHeaders, string data)
+    protected override Error ParseErrorResponse(int httpStatusCode, IEnumerable<KeyValuePair<string, IEnumerable<string>>> responseHeaders, IMessageAccessor accessor)
     {
-        var errorData = ValidateJson(data);
-        if (!errorData)
-            return new ServerError(data);
+        if (!accessor.IsJson)
+            return new ServerError(accessor.GetOriginalString());
 
-        if (errorData.Data["code"] == null || errorData.Data["msg"] == null)
-            return new ServerError(data);
+        var codePath = MessagePath.Get().Property("code");
+        var msgPath = MessagePath.Get().Property("msg");
+        var code = accessor.GetValue<int?>(codePath);
+        var msg = accessor.GetValue<string>(msgPath);
+        if (msg == null)
+            return new ServerError(accessor.GetOriginalString());
 
-        return new ServerError((int)errorData.Data["code"]!, (string)errorData.Data["msg"]!);
+        if (code == null)
+            return new ServerError(msg);
+
+        return new ServerError(code.Value, msg);
     }
 
     internal void InvokeOrderPlaced(OrderId id)

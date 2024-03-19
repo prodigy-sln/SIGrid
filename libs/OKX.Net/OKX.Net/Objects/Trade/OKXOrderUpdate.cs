@@ -1,4 +1,4 @@
-﻿namespace OKX.Net.Objects.Trade;
+namespace OKX.Net.Objects.Trade;
 
 /// <summary>
 /// Order info update

@@ -2,6 +2,7 @@
 using OKX.Net.Enums;
 using OKX.Net.Interfaces.Clients.UnifiedApi;
 using OKX.Net.Objects.Account;
+using OKX.Net.Objects.Affiliate;
 using OKX.Net.Objects.Core;
 using OKX.Net.Objects.Funding;
 
@@ -44,8 +45,8 @@ internal class OKXRestClientUnifiedApiAccount : IOKXRestClientUnifiedApiAccount
     private const string Endpoints_V5_Asset_WithdrawalLightning = "api/v5/asset/withdrawal-lightning";
     private const string Endpoints_V5_Asset_WithdrawalCancel = "api/v5/asset/cancel-withdrawal";
     private const string Endpoints_V5_Asset_WithdrawalHistory = "api/v5/asset/withdrawal-history";
-    private const string Endpoints_V5_Asset_SavingBalance = "api/v5/asset/saving-balance";
-    private const string Endpoints_V5_Asset_SavingPurchaseRedempt = "api/v5/asset/purchase_redempt";
+    private const string Endpoints_V5_Asset_SavingBalance = "api/v5/finance/savings/balance";
+    private const string Endpoints_V5_Asset_SavingPurchaseRedempt = "api/v5/finance/savings/purchase-redempt";
     #endregion
 
     internal OKXRestClientUnifiedApiAccount(OKXRestClientUnifiedApi baseClient)
@@ -772,6 +773,76 @@ internal class OKXRestClientUnifiedApiAccount : IOKXRestClientUnifiedApiAccount
         var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXSavingActionResponse>>>(_baseClient.GetUri(Endpoints_V5_Asset_SavingPurchaseRedempt), HttpMethod.Post, ct, parameters, true).ConfigureAwait(false);
         if (!result.Success) return result.AsError<OKXSavingActionResponse>(result.Error!);
         if (result.Data.ErrorCode > 0) return result.AsError<OKXSavingActionResponse>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data.FirstOrDefault());
+    }
+
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXDustConvertResult>> ConvertDustAsync(IEnumerable<string> assets, CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.AddParameter("ccy", assets);
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXDustConvertResult>>>(_baseClient.GetUri("api/v5/asset/convert-dust-assets"), HttpMethod.Post, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXDustConvertResult>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXDustConvertResult>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data!.FirstOrDefault());
+    }
+
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXAccountIsolatedMarginMode>> SetIsolatedMarginModeAsync(OKXInstrumentType instumentType, OKXIsolatedMarginMode isolatedMarginMode, CancellationToken ct = default)
+    {
+        var parameters = new ParameterCollection();
+        parameters.AddEnum("type", instumentType);
+        parameters.AddEnum("isoMode", isolatedMarginMode);
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXAccountIsolatedMarginMode>>>(_baseClient.GetUri("api/v5/account/set-isolated-mode"), HttpMethod.Post, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXAccountIsolatedMarginMode>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXAccountIsolatedMarginMode>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data.FirstOrDefault());
+    }
+
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXTransferInfo>> GetTransferAsync(string? transferId = null, string? clientTransferId = null, OKXTransferType? type = null, CancellationToken ct = default)
+    {
+        var parameters = new ParameterCollection();
+        parameters.AddOptional("transId", transferId);
+        parameters.AddOptional("clientId", clientTransferId);
+        parameters.AddOptionalEnum("type", type);
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXTransferInfo>>>(_baseClient.GetUri("api/v5/asset/transfer-state"), HttpMethod.Get, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXTransferInfo>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXTransferInfo>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data.FirstOrDefault());
+    }
+
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXAccountMode>> SetAccountModeAsync(OKXAccountLevel mode, CancellationToken ct = default)
+    {
+        var parameters = new ParameterCollection();
+        parameters.AddEnum("acctLv", mode);
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXAccountMode>>>(_baseClient.GetUri("api/v5/account/set-account-level"), HttpMethod.Post, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXAccountMode>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXAccountMode>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data.FirstOrDefault());
+    }
+
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXInviteeDetails>> GetAffiliateInviteeDetailsAsync(string userId, CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, object>()
+        {
+            { "uid", userId }
+        };
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXInviteeDetails>>>(_baseClient.GetUri("api/v5/affiliate/invitee/detail"), HttpMethod.Get, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXInviteeDetails>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXInviteeDetails>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
 
         return result.As(result.Data.Data.FirstOrDefault());
     }

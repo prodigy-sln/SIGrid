@@ -38,12 +38,12 @@ public class OKXOrderAmendRequest
     /// <summary>
     /// New quantity
     /// </summary>
-    [JsonProperty("newSz", NullValueHandling = NullValueHandling.Ignore)]
+    [JsonProperty("newSz", NullValueHandling = NullValueHandling.Ignore), JsonConverter(typeof(DecimalStringWriterConverter))]
     public decimal? NewQuantity { get; set; }
 
     /// <summary>
     /// New price
     /// </summary>
-    [JsonProperty("newPx", NullValueHandling = NullValueHandling.Ignore)]
+    [JsonProperty("newPx", NullValueHandling = NullValueHandling.Ignore), JsonConverter(typeof(DecimalStringWriterConverter))]
     public decimal? NewPrice { get; set; }
 }

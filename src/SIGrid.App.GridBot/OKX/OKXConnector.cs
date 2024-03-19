@@ -2,7 +2,7 @@
 using System.Reactive.Linq;
 using System.Threading.Channels;
 using CryptoExchange.Net.Objects;
-using CryptoExchange.Net.Sockets;
+using CryptoExchange.Net.Objects.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OKX.Net.Clients;
@@ -239,7 +239,13 @@ public class OKXConnector : IAsyncDisposable
             async onNext =>
                 await _socketClient.UnifiedApi.Trading.SubscribeToPositionUpdatesAsync(OKXInstrumentType.Any, null,
                     null, true,
-                    onNext, ct),
+                    (updates) =>
+                    {
+                        foreach (var update in updates.Data)
+                        {
+                            onNext(update);
+                        }
+                    }, ct),
             position =>
             {
                 if (!position.PositionId.HasValue) return;
@@ -254,7 +260,7 @@ public class OKXConnector : IAsyncDisposable
             async onNext =>
                 await _socketClient.UnifiedApi.Trading.SubscribeToOrderUpdatesAsync(OKXInstrumentType.Any,
                     null, null,
-                    onNext, ct),
+                    update => onNext(update.Data), ct),
             orderUpdate =>
             {
                 if (string.IsNullOrWhiteSpace(orderUpdate.ClientOrderId)) return;
@@ -316,7 +322,7 @@ public class OKXConnector : IAsyncDisposable
             Observable.Create<OKXTicker>(o =>
                 GetSubscriptionCallbackAsObservable(o, async onNext =>
                         await _socketClient.UnifiedApi.ExchangeData.SubscribeToTickerUpdatesAsync(instrument.Symbol,
-                            onNext, ct),
+                            update => onNext(update.Data), ct),
                     ticker =>
                     {
                         if (!ticker.LastPrice.HasValue) return;

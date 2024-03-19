@@ -281,4 +281,11 @@ public class OKXAlgoOrder
     [JsonProperty("quickMgnType")]
     [JsonConverter(typeof(EnumConverter))]
     public OKXQuickMarginType? QuickMarginType { get; set; }
+
+    /// <summary>
+    /// Whether to enable Cost-price SL. Only applicable to SL order of split TPs. false: disable, the default value, true: Enable “Cost-price SL”
+    /// </summary>
+    [JsonProperty("amendPxOnTriggerType")]
+    [JsonConverter(typeof(BoolConverter))]
+    public bool CostPriceSlEnabled { get; set; }
 }

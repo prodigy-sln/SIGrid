@@ -101,9 +101,10 @@ public interface IOKXRestClientUnifiedApiTrading
     /// <param name="positionSide">Position Side</param>
     /// <param name="asset">Asset</param>
     /// <param name="autoCancel">Whether any pending orders for closing out needs to be automatically canceled when close position via a market order.</param>
+    /// <param name="clientOrderId">Client order id</param>
     /// <param name="ct">Cancellation Token</param>
     /// <returns></returns>
-    Task<WebCallResult<OKXClosePositionResponse>> ClosePositionAsync(string symbol, OKXMarginMode marginMode, OKXPositionSide? positionSide = null, string? asset = null, bool? autoCancel = null, CancellationToken ct = default);
+    Task<WebCallResult<OKXClosePositionResponse>> ClosePositionAsync(string symbol, OKXMarginMode marginMode, OKXPositionSide? positionSide = null, string? asset = null, bool? autoCancel = null, string? clientOrderId = null, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieve a list of untriggered Algo orders under the current account.
@@ -276,6 +277,7 @@ public interface IOKXRestClientUnifiedApiTrading
     /// <param name="closeFraction">Fraction of position to be closed when the algo order is triggered. Currently the system supports fully closing the position only so the only accepted value is 1.</param>
     /// <param name="cancelOnClose">Whether the TP/SL order placed by the user is associated with the corresponding position of the instrument. If it is associated, the TP/SL order will be cancelled when the position is fully closed; if it is not, the TP/SL order will not be affected when the position is fully closed.</param>
     /// <param name="quickMarginType">Quick Margin type. Only applicable to Quick Margin Mode of isolated margin</param>
+    /// <param name="clientOrderId">Client order id</param>
     /// <param name="ct">Cancellation Token</param>
     /// <returns></returns>
     Task<WebCallResult<OKXAlgoOrderResponse>> PlaceAlgoOrderAsync(
@@ -307,6 +309,7 @@ public interface IOKXRestClientUnifiedApiTrading
         decimal? closeFraction = null,
         bool? cancelOnClose = null,
         OKXQuickMarginType? quickMarginType = null,
+        string? clientOrderId = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -367,5 +370,48 @@ public interface IOKXRestClientUnifiedApiTrading
         OKXQuantityAsset? quantityAsset = null,
         string? clientOrderId = null,
         bool? reduceOnly = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Get a specific algo order
+    /// <para><a href="https://www.okx.com/docs-v5/en/#order-book-trading-algo-trading-get-algo-order-details" /></para>
+    /// </summary>
+    /// <param name="algoId">Algo id, this or clientAlgoId should be provided</param>
+    /// <param name="clientAlgoId">Client algo order id, this or algoId should be provided</param>
+    /// <param name="ct">Cancellation Token</param>
+    /// <returns></returns>
+    Task<WebCallResult<OKXAlgoOrder>> GetAlgoOrderAsync(string? algoId = null, string? clientAlgoId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Amend an incomplete order.
+    /// <para><a href="https://www.okx.com/docs-v5/en/#order-book-trading-algo-trading-post-amend-algo-order" /></para>
+    /// </summary>
+    /// <param name="symbol">Instrument ID</param>
+    /// <param name="algoId">Algo ID</param>
+    /// <param name="clientAlgoId">Client Algo Order ID</param>
+    /// <param name="requestId">Request ID</param>
+    /// <param name="cancelOnFail">Cancel On Fail</param>
+    /// <param name="newQuantity">New Quantity</param>
+    /// <param name="newTakeProfitTriggerPrice">New take profit trigger price</param>
+    /// <param name="newStopLossTriggerPrice">New stop loss trigger price</param>
+    /// <param name="newTakeProfitOrderPrice">New take profit order price</param>
+    /// <param name="newStopLossOrderPrice">New stop loss order price</param>
+    /// <param name="newTakeProfitPriceTriggerType">New take profit price trigger type</param>
+    /// <param name="newStopLossPriceTriggerType">New stop loss price trigger type</param>
+    /// <param name="ct">Cancellation Token</param>
+    /// <returns></returns>
+    Task<WebCallResult<OKXAlgoOrderAmendResponse>> AmendAlgoOrderAsync(
+        string symbol,
+        string? algoId = null,
+        string? clientAlgoId = null,
+        string? requestId = null,
+        bool? cancelOnFail = null,
+        decimal? newQuantity = null,
+        decimal? newTakeProfitTriggerPrice = null,
+        decimal? newStopLossTriggerPrice = null,
+        decimal? newTakeProfitOrderPrice = null,
+        decimal? newStopLossOrderPrice = null,
+        OXKTriggerPriceType? newTakeProfitPriceTriggerType = null,
+        OXKTriggerPriceType? newStopLossPriceTriggerType = null,
         CancellationToken ct = default);
 }

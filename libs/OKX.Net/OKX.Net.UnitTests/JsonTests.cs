@@ -35,12 +35,15 @@ namespace OKX.Net.UnitTests
                    "SetAccountPositionModeAsync",
                    "SetGreeksAsync",
                    "TransferAsync",
-                   "WithdrawAsync"
+                   "ConvertDustAsync",
+                   "WithdrawAsync",
+                   "GetTransferAsync",
+                   "SetIsolatedMarginModeAsync",
+                   "GetAffiliateInviteeDetailsAsync"
                 },
                 ignoreProperties: new Dictionary<string, List<string>>
                 {
-                    { "GetAccountConfigurationAsync", new List<string>{ "traderInsts" } },
-                    { "GetAccountPositionsAsync", new List<string>{ "closeOrderAlgo" } }
+                    { "GetAccountConfigurationAsync", new List<string>{ "traderInsts" } }
                 }
                 );
         }
@@ -71,7 +74,7 @@ namespace OKX.Net.UnitTests
         {
             await _comparer.ProcessSubject("Unified/Trading", c => c.UnifiedApi.Trading,
                useNestedJsonPropertyForAllCompare: new List<string> { "data" },
-               parametersToSetNull: new[] { "pageSize", "quoteQuantity" },
+               parametersToSetNull: new[] { "pageSize", "quoteQuantity", "clientAlgoId" },
                ignoreProperties: new Dictionary<string, List<string>>
                {
                },
@@ -84,7 +87,8 @@ namespace OKX.Net.UnitTests
                    "CancelOrderAsync",
                    "GetOrderDetailsAsync",
                    "PlaceAlgoOrderAsync",
-                   "PlaceOrderAsync"
+                   "PlaceOrderAsync",
+                   "GetAlgoOrderAsync"
                }
                 );
         }

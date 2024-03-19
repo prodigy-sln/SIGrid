@@ -1,4 +1,5 @@
-﻿using OKX.Net.Clients.UnifiedApi;
+﻿using CryptoExchange.Net.Clients;
+using OKX.Net.Clients.UnifiedApi;
 using OKX.Net.Interfaces.Clients;
 using OKX.Net.Interfaces.Clients.UnifiedApi;
 using OKX.Net.Objects;
@@ -21,14 +22,7 @@ public class OKXRestClient : BaseRestClient, IOKXRestClient
     /// Create a new instance of the OKXRestClient using provided options
     /// </summary>
     /// <param name="optionsDelegate">Option configuration delegate</param>
-    public OKXRestClient(Action<OKXRestOptions> optionsDelegate) : this(null, null, optionsDelegate)
-    {
-    }
-
-    /// <summary>
-    /// Create a new instance of the OKXRestClient using default options
-    /// </summary>
-    public OKXRestClient(ILoggerFactory? loggerFactory = null, HttpClient? httpClient = null) : this(httpClient, loggerFactory, null)
+    public OKXRestClient(Action<OKXRestOptions>? optionsDelegate = null) : this(null, null, optionsDelegate)
     {
     }
 

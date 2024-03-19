@@ -7,6 +7,8 @@ using CryptoExchange.Net.Sockets;
 using OKX.Net.Clients;
 using OKX.Net.Objects.Core;
 using OKX.Net.Interfaces.Clients.UnifiedApi;
+using CryptoExchange.Net.Objects.Sockets;
+using NUnit.Framework.Legacy;
 
 namespace OKX.Net.UnitTests
 {
@@ -31,10 +33,10 @@ namespace OKX.Net.UnitTests
             var result = await client.UnifiedApi.ExchangeData.GetTickersAsync(Enums.OKXInstrumentType.Spot);
 
             // assert
-            Assert.IsFalse(result.Success);
-            Assert.IsNotNull(result.Error);
-            Assert.IsTrue(result.Error!.Code == 400001);
-            Assert.IsTrue(result.Error.Message == "Error occured");
+            ClassicAssert.IsFalse(result.Success);
+            ClassicAssert.IsNotNull(result.Error);
+            Assert.That(result.Error!.Code == 400001);
+            Assert.That(result.Error.Message == "Error occured");
         }
 
         [TestCase()]
@@ -48,8 +50,8 @@ namespace OKX.Net.UnitTests
             var result = await client.UnifiedApi.ExchangeData.GetTickersAsync(Enums.OKXInstrumentType.Spot);
 
             // assert
-            Assert.IsFalse(result.Success);
-            Assert.IsNotNull(result.Error);
+            ClassicAssert.IsFalse(result.Success);
+            ClassicAssert.IsNotNull(result.Error);
         }
 
         [TestCase()]
@@ -70,10 +72,10 @@ namespace OKX.Net.UnitTests
             var result = await client.UnifiedApi.ExchangeData.GetTickersAsync(Enums.OKXInstrumentType.Spot);
 
             // assert
-            Assert.IsFalse(result.Success);
-            Assert.IsNotNull(result.Error);
-            Assert.IsTrue(result.Error!.Code == 400001);
-            Assert.IsTrue(result.Error.Message == "Error occured");
+            ClassicAssert.IsFalse(result.Success);
+            ClassicAssert.IsNotNull(result.Error);
+            Assert.That(result.Error!.Code == 400001);
+            Assert.That(result.Error.Message == "Error occured");
         }
 
         [Test]
@@ -90,7 +92,7 @@ namespace OKX.Net.UnitTests
                 foreach (var method in implementation.GetMethods().Where(m => m.ReturnType.IsAssignableTo(typeof(Task))))
                 {
                     var interfaceMethod = clientInterface.GetMethod(method.Name, method.GetParameters().Select(p => p.ParameterType).ToArray());
-                    Assert.NotNull(interfaceMethod, $"{method.Name} not found in interface {clientInterface.Name}");
+                    ClassicAssert.NotNull(interfaceMethod, $"{method.Name} not found in interface {clientInterface.Name}");
                     methods++;
                 }
                 Debug.WriteLine($"{clientInterface.Name} {methods} methods validated");
@@ -110,7 +112,7 @@ namespace OKX.Net.UnitTests
                 foreach (var method in implementation.GetMethods().Where(m => m.ReturnType.IsAssignableTo(typeof(Task<CallResult<UpdateSubscription>>))))
                 {
                     var interfaceMethod = clientInterface.GetMethod(method.Name, method.GetParameters().Select(p => p.ParameterType).ToArray());
-                    Assert.NotNull(interfaceMethod);
+                    ClassicAssert.NotNull(interfaceMethod);
                     methods++;
                 }
                 Debug.WriteLine($"{clientInterface.Name} {methods} methods validated");

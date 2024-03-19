@@ -9,7 +9,6 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
 {
     private const string _bodyParameterKey = "<BODY>";
 
-    private static Random _random = new Random();
     private readonly OKXRestClientUnifiedApi _baseClient;
 
     #region Trade Endpoints
@@ -30,6 +29,7 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
     private const string Endpoints_V5_Trade_CancelAdvanceAlgos = "api/v5/trade/cancel-advance-algos";
     private const string Endpoints_V5_Trade_OrdersAlgoPending = "api/v5/trade/orders-algo-pending";
     private const string Endpoints_V5_Trade_OrdersAlgoHistory = "api/v5/trade/orders-algo-history";
+
     #endregion
 
     internal OKXRestClientUnifiedApiTrading(OKXRestClientUnifiedApi baseClient)
@@ -63,6 +63,8 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
         bool? reduceOnly = null,
         CancellationToken ct = default)
     {
+        clientOrderId = clientOrderId ?? ExchangeHelpers.AppendRandomString(_baseClient._ref, 32);
+
         var parameters = new Dictionary<string, object> {
             {"instId", symbol },
             {"tdMode", JsonConvert.SerializeObject(tradeMode ?? OKXTradeMode.Cash, new TradeModeConverter(false)) },
@@ -70,7 +72,7 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
             {"ordType", JsonConvert.SerializeObject(type, new OrderTypeConverter(false)) },
             {"sz", quantity.ToString(CultureInfo.InvariantCulture) },
             {"tag", _baseClient._ref },
-            {"clOrdId",  _baseClient._ref + (clientOrderId ?? RandomString(15)) },
+            {"clOrdId",  clientOrderId },
         };
         parameters.AddOptionalParameter("px", price?.ToString(CultureInfo.InvariantCulture));
         parameters.AddOptionalParameter("ccy", asset);
@@ -118,8 +120,9 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
     {
         foreach (var order in orders)
         {
+            var clientOrderId = order.ClientOrderId ?? ExchangeHelpers.AppendRandomString(_baseClient._ref, 32);
             order.Tag = _baseClient._ref;
-            order.ClientOrderId = _baseClient._ref + (order.ClientOrderId ?? RandomString(15));
+            order.ClientOrderId = clientOrderId;
         }
 
         var parameters = new Dictionary<string, object>
@@ -270,14 +273,16 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
         OKXPositionSide? positionSide = null,
         string? asset = null,
         bool? autoCancel = null,
+        string? clientOrderId = null,
         CancellationToken ct = default)
     {
+        clientOrderId = clientOrderId ?? ExchangeHelpers.AppendRandomString(_baseClient._ref, 32);
+
         var parameters = new Dictionary<string, object> {
             {"instId", symbol },
             {"mgnMode", JsonConvert.SerializeObject(marginMode, new MarginModeConverter(false)) },
             {"tag", _baseClient._ref },
-            {"clOrdId", _baseClient._ref + RandomString(15) }
-
+            {"clOrdId", clientOrderId }
         };
         if (positionSide.HasValue)
             parameters.AddOptionalParameter("posSide", JsonConvert.SerializeObject(positionSide, new PositionSideConverter(false)));
@@ -318,8 +323,8 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
         string? underlying = null,
         OKXOrderType? orderType = null,
         OKXOrderState? state = null,
-        long? before = null,
-        long? after = null,
+        long? toId = null,
+        long? fromId = null,
         int limit = 100,
         string? instrumentFamily = null,
         CancellationToken ct = default)
@@ -330,8 +335,8 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
         var parameters = new Dictionary<string, object>();
         parameters.AddOptionalParameter("instId", symbol);
         parameters.AddOptionalParameter("uly", underlying);
-        parameters.AddOptionalParameter("before", before.ToString());
-        parameters.AddOptionalParameter("after", after.ToString());
+        parameters.AddOptionalParameter("before", toId?.ToString());
+        parameters.AddOptionalParameter("after", fromId?.ToString());
         parameters.AddOptionalParameter("limit", limit.ToString());
         parameters.AddOptionalParameter("instFamily", instrumentFamily);
 
@@ -555,9 +560,11 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
         decimal? closeFraction = null,
         bool? cancelOnClose = null,
         OKXQuickMarginType? quickMarginType = null,
+        string? clientOrderId = null,
 
         CancellationToken ct = default)
     {
+        clientOrderId = clientOrderId ?? ExchangeHelpers.AppendRandomString(_baseClient._ref, 32);
         var parameters = new Dictionary<string, object> {
             {"instId", symbol },
             {"tdMode", JsonConvert.SerializeObject(tradeMode, new TradeModeConverter(false)) },
@@ -565,7 +572,7 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
             {"ordType", JsonConvert.SerializeObject(algoOrderType, new AlgoOrderTypeConverter(false)) },
             {"sz", quantity.ToString() },
             {"tag", _baseClient._ref },
-            {"clOrdId", _baseClient._ref + RandomString(15) }
+            {"clOrdId", clientOrderId }
         };
         parameters.AddOptionalParameter("ccy", asset);
         parameters.AddOptionalParameter("reduceOnly", reduceOnly);
@@ -718,10 +725,62 @@ internal class OKXRestClientUnifiedApiTrading : IOKXRestClientUnifiedApiTrading
         return result.As(result.Data.Data!);
     }
 
-    private string RandomString(int length)
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXAlgoOrder>> GetAlgoOrderAsync(string? algoId = null, string? clientAlgoId = null, CancellationToken ct = default)
     {
-        const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        return new string(Enumerable.Repeat(chars, length)
-            .Select(s => s[_random.Next(s.Length)]).ToArray());
+        if ((algoId == null) == (clientAlgoId == null))
+            throw new ArgumentException("Either algoId or clientAlgoId needs to be provided");
+
+        var parameters = new ParameterCollection();
+        parameters.AddOptional("algoId", algoId);
+        parameters.AddOptional("algoClOrdId", clientAlgoId);
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXAlgoOrder>>>(_baseClient.GetUri("api/v5/trade/order-algo"), HttpMethod.Get, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXAlgoOrder>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXAlgoOrder>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data.FirstOrDefault());
+    }
+
+    /// <inheritdoc />
+    public virtual async Task<WebCallResult<OKXAlgoOrderAmendResponse>> AmendAlgoOrderAsync(
+        string symbol,
+        string? algoId = null,
+        string? clientAlgoId = null,
+        string? requestId = null,
+        bool? cancelOnFail = null,
+        decimal? newQuantity = null,
+        decimal? newTakeProfitTriggerPrice = null,
+        decimal? newStopLossTriggerPrice = null,
+        decimal? newTakeProfitOrderPrice = null,
+        decimal? newStopLossOrderPrice = null,
+        OXKTriggerPriceType? newTakeProfitPriceTriggerType = null,
+        OXKTriggerPriceType? newStopLossPriceTriggerType = null,
+        CancellationToken ct = default)
+    {
+        if ((algoId == null) == (clientAlgoId == null))
+            throw new ArgumentException("Either algoId or clientAlgoId needs to be provided");
+
+        var parameters = new ParameterCollection
+        {
+            { "instId", symbol },
+        };
+        parameters.AddOptional("algoId", algoId?.ToString(CultureInfo.InvariantCulture));
+        parameters.AddOptional("algoClOrdId", clientAlgoId);
+        parameters.AddOptional("cxlOnFail", cancelOnFail);
+        parameters.AddOptional("reqId", requestId);
+        parameters.AddOptional("newSz", newQuantity?.ToString(CultureInfo.InvariantCulture));
+        parameters.AddOptional("newTpTriggerPx", newTakeProfitTriggerPrice?.ToString(CultureInfo.InvariantCulture));
+        parameters.AddOptional("newTpOrdPx", newTakeProfitOrderPrice?.ToString(CultureInfo.InvariantCulture));
+        parameters.AddOptional("newSlTriggerPx", newStopLossTriggerPrice?.ToString(CultureInfo.InvariantCulture));
+        parameters.AddOptional("newSlOrdPx", newStopLossOrderPrice?.ToString(CultureInfo.InvariantCulture));
+        parameters.AddOptionalEnum("newTpTriggerPxType", newTakeProfitPriceTriggerType);
+        parameters.AddOptionalEnum("newSlTriggerPxType", newStopLossPriceTriggerType);
+
+        var result = await _baseClient.ExecuteAsync<OKXRestApiResponse<IEnumerable<OKXAlgoOrderAmendResponse>>>(_baseClient.GetUri("api/v5/trade/amend-algos"), HttpMethod.Post, ct, parameters, true).ConfigureAwait(false);
+        if (!result.Success) return result.AsError<OKXAlgoOrderAmendResponse>(result.Error!);
+        if (result.Data.ErrorCode > 0) return result.AsError<OKXAlgoOrderAmendResponse>(new OKXRestApiError(result.Data.ErrorCode, result.Data.ErrorMessage!, null));
+
+        return result.As(result.Data.Data.FirstOrDefault());
     }
 }

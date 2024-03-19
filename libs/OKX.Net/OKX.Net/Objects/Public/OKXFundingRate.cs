@@ -1,4 +1,4 @@
-﻿using OKX.Net.Converters;
+using OKX.Net.Converters;
 using OKX.Net.Enums;
 
 namespace OKX.Net.Objects.Public;
